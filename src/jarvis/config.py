@@ -6,9 +6,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
-COMMAND_RECORD_SECONDS = 5
+MAX_COMMAND_SECONDS = 8  # hard cap, in case you never go quiet
+SILENCE_HANG_MS = 1200  # stop recording after this much quiet, once you've started speaking
+SILENCE_RMS_THRESHOLD = 300  # int16 amplitude below this counts as "quiet" — tune if it cuts you off early
 WHISPER_MODEL_SIZE = "base.en"
 
 

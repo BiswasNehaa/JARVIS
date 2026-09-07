@@ -1,12 +1,30 @@
+import numpy as np
+
 from . import brain, config, stt, tts, wake_word
 from .audio import SAMPLE_RATE, FRAME_SAMPLES, Microphone
 
+FRAME_MS = 1000 * FRAME_SAMPLES / SAMPLE_RATE
+SILENCE_HANG_FRAMES = int(config.SILENCE_HANG_MS / FRAME_MS)
+MAX_FRAMES = int(config.MAX_COMMAND_SECONDS * 1000 / FRAME_MS)
+
 
 def _record_command(mic: Microphone) -> list[int]:
-    num_frames = int(SAMPLE_RATE * config.COMMAND_RECORD_SECONDS / FRAME_SAMPLES)
     samples: list[int] = []
-    for _ in range(num_frames):
-        samples.extend(mic.read_frame().tolist())
+    speech_started = False
+    silent_frames = 0
+
+    for _ in range(MAX_FRAMES):
+        frame = mic.read_frame()
+        samples.extend(frame.tolist())
+
+        if np.abs(frame).mean() >= config.SILENCE_RMS_THRESHOLD:
+            speech_started = True
+            silent_frames = 0
+        elif speech_started:
+            silent_frames += 1
+            if silent_frames >= SILENCE_HANG_FRAMES:
+                break
+
     return samples
 
 
