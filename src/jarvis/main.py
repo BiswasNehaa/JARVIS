@@ -1,55 +1,47 @@
-from pvrecorder import PvRecorder
-
-from . import brain, config, stt, tts
-from .wake_word import create_porcupine
+from . import brain, config, stt, tts, wake_word
+from .audio import SAMPLE_RATE, FRAME_SAMPLES, Microphone
 
 
-def _record_command(recorder: PvRecorder, sample_rate: int) -> list[int]:
-    num_frames = int(sample_rate * config.COMMAND_RECORD_SECONDS / recorder.frame_length)
+def _record_command(mic: Microphone) -> list[int]:
+    num_frames = int(SAMPLE_RATE * config.COMMAND_RECORD_SECONDS / FRAME_SAMPLES)
     samples: list[int] = []
     for _ in range(num_frames):
-        samples.extend(recorder.read())
+        samples.extend(mic.read_frame().tolist())
     return samples
 
 
 def main() -> None:
     config.require_keys()
 
-    porcupine = create_porcupine()
-    recorder = PvRecorder(frame_length=porcupine.frame_length)
-    recorder.start()
-
+    model = wake_word.create_model()
     history: list[dict] = []
 
-    print('JARVIS is listening. Say "Jarvis" to wake me up. (Ctrl+C to quit)')
+    print('JARVIS is listening. Say "Hey Jarvis" to wake me up. (Ctrl+C to quit)')
 
-    try:
-        while True:
-            frame = recorder.read()
-            if porcupine.process(frame) >= 0:
-                print("Wake word detected — listening...")
-                samples = _record_command(recorder, porcupine.sample_rate)
+    with Microphone() as mic:
+        try:
+            while True:
+                frame = mic.read_frame()
+                if wake_word.detected(model, frame):
+                    print("Wake word detected — listening...")
+                    samples = _record_command(mic)
 
-                text = stt.transcribe(samples)
-                if not text:
-                    print("(didn't catch that)")
-                    continue
-                print(f"You: {text}")
+                    text = stt.transcribe(samples)
+                    if not text:
+                        print("(didn't catch that)")
+                        continue
+                    print(f"You: {text}")
 
-                reply = brain.respond(text, history)
-                print(f"JARVIS: {reply}")
+                    reply = brain.respond(text, history)
+                    print(f"JARVIS: {reply}")
 
-                history.append({"role": "user", "content": text})
-                history.append({"role": "assistant", "content": reply})
-                history[:] = history[-20:]  # keep token cost bounded
+                    history.append({"role": "user", "content": text})
+                    history.append({"role": "assistant", "content": reply})
+                    history[:] = history[-20:]  # keep token cost bounded
 
-                tts.speak(reply)
-    except KeyboardInterrupt:
-        print("\nShutting down.")
-    finally:
-        recorder.stop()
-        recorder.delete()
-        porcupine.delete()
+                    tts.speak(reply)
+        except KeyboardInterrupt:
+            print("\nShutting down.")
 
 
 if __name__ == "__main__":
