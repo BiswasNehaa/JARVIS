@@ -21,28 +21,58 @@ the phase roadmap.
   `sounddevice` (`src/jarvis/audio.py`) instead of Picovoice's `pvrecorder`.
 - **Personality**: full charm from day one (confident, witty, flirty banter), not a subtle/professional
   starting point — this was an explicit user choice, not a default.
-- **HUD visual target**: a glowing, swirling orb of light — reference is JARVIS's holographic form
-  from *Avengers: Age of Ultron*, not a generic waveform bar. Planned for Phase 2 via
-  `pywebview` (HTML/CSS/JS visuals in a small always-on-top native window).
+- **HUD visual concept (settled after many iterations, 2026-09-07/08)**: NOT a smooth glowing sphere,
+  NOT particles-connected-by-lines (constellation/network-graph look — explicitly rejected), NOT a
+  scattered multi-cluster particle cloud (looked like a galaxy — also rejected). Current direction the
+  user likes: one coherent round holographic silhouette built from (1) large fragmented/incomplete
+  orbital arcs in independent 3D planes with their own slow spin, (2) internal flowing energy
+  filaments (smooth curves via bounded-random-walk control points + a few true spirals — NOT sharp
+  zigzags), (3) particles reduced to secondary decoration riding along the arcs/filaments. Quantum-cyan
+  palette (`#00D9FF`/`#00AEEF`/`#5CE1FF`/`#E8FFFF`), thickness/brightness hierarchy (thick glowing
+  bundles for primary structures, thin dim single lines for background detail — see `makeStrokeBundle`
+  in `hud/index.html`, since plain WebGL lines can't render thick natively). Full state scaffold exists
+  (`IDLE/ACTIVATING/LISTENING/PROCESSING/SPEAKING/ERROR/SLEEPING`) but only visual params are wired so
+  far — no real mic/audio reactivity yet. **Don't rebuild the structural concept again** unless the user
+  explicitly says so — iterate within it (this took ~10 rounds of rejected directions to converge on).
+- **Transparent desktop-overlay window — deferred, not solved**: tried `pywebview`'s `transparent=True`
+  (confirmed via their own docs: unsupported on Windows), then PyQt6 `QWebEngineView` with
+  `WA_TranslucentBackground` (rendered a flat opaque gray, not real transparency — matches multiple
+  unresolved reports of this exact Chromium-in-Qt issue). Decision: defer true transparency until the
+  visual design is finalized, then do a one-time port to native OpenGL (Qt `QOpenGLWidget` +
+  PyOpenGL/moderngl + GLSL) instead of an embedded browser view, since Qt's own GL transparency is
+  reliable where Chromium-embedded transparency is not. Reverted to plain `pywebview` + solid dark
+  background for now (`src/jarvis/hud.py`, `requirements.txt` back to `pywebview`, not PyQt6). Don't
+  re-attempt browser-based transparency tricks — go straight to the OpenGL rewrite when this is revisited.
 - **Repo is public** on GitHub under the user's account by explicit choice — never commit `.env` or
   real API keys.
 
 ## Current status
 
-Phase 1 (core terminal loop: wake word → STT → Groq/Llama → TTS) is scaffolded in `src/jarvis/`. Not
-yet tested end-to-end — needs the user's Groq API key in `.env` (the `GROQ_API_KEY=` line was still
-empty as of the last check, worth confirming with the user) and the one-time openWakeWord model
-download.
+Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by
+the user (2026-09-07). Default Groq model is `openai/gpt-oss-120b` (the originally-planned
+`llama-3.3-70b-versatile` was retired from Groq's free tier — check `client.models.list()` again if
+another swap is ever needed, their lineup has shifted before). `TTS_VOICE`/`TTS_RATE`/`TTS_PITCH` and
+`USER_NAME` are configurable via `.env` (see `config.py`) — current voice is `en-CA-LiamNeural`, picked
+as "best of the free options so far" but user still finds it lacks real emotional delivery (known free
+Edge-TTS ceiling; ElevenLabs is the fallback if ever worth the free-tier limit — see `feedback_commit_after_milestones`-adjacent context, not re-litigated unless user brings up budget/voice again).
+
+Phase 2 (HUD): visual design is in solid shape (see above), still standalone (`python -m
+src.jarvis.hud`, not wired into `main.py`'s voice loop yet).
 
 ## Architecture
 
 ```
 src/jarvis/
-  config.py      env vars, constants (model, record duration)
-  audio.py        sounddevice microphone wrapper (16kHz mono int16 frames)
+  config.py      env vars, constants (model, voice, user name, record duration)
+  audio.py       sounddevice microphone wrapper (16kHz mono int16 frames)
   wake_word.py   openWakeWord model (pretrained "hey_jarvis")
   stt.py         faster-whisper transcription
-  brain.py       Groq API call (Llama 3.3 70B) + JARVIS system prompt/personality
-  tts.py         edge-tts synthesis + playback
-  main.py        orchestrates the loop
+  brain.py       Groq API call (GPT-OSS 120B) + JARVIS system prompt/personality
+  tts.py         edge-tts synthesis + playback (markdown/emoji stripped before speaking)
+  hud.py         pywebview window hosting hud/index.html — standalone visual test for now
+  main.py        orchestrates the voice loop (does not yet call hud.py)
+hud/
+  index.html     the HUD itself — Three.js/WebGL scene, self-contained (noise fn, arc/filament
+                 systems, state machine), see "HUD visual concept" above before editing
+  vendor/        three.min.js, vendored locally (no CDN dependency at runtime)
 ```
