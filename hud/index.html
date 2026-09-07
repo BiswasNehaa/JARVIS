@@ -1,0 +1,439 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #020308; overflow: hidden; }
+  #stage { position: relative; width: 100%; height: 100%; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+  <script src="vendor/three.min.js"></script>
+  <script>
+    // ---------- renderer / scene ----------
+    const stage = document.getElementById('stage');
+    let W = stage.clientWidth, H = stage.clientHeight;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 100);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.setSize(W, H);
+    renderer.setClearColor(0x000000, 0);
+    stage.appendChild(renderer.domElement);
+
+    window.addEventListener('resize', () => {
+      W = stage.clientWidth; H = stage.clientHeight;
+      camera.aspect = W / H; camera.updateProjectionMatrix();
+      renderer.setSize(W, H);
+    });
+
+    // ---------- noise + helpers ----------
+    function makePermutation() {
+      const p = new Uint8Array(256);
+      for (let i = 0; i < 256; i++) p[i] = i;
+      for (let i = 255; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = p[i]; p[i] = p[j]; p[j] = tmp;
+      }
+      const perm = new Uint8Array(512);
+      for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+      return perm;
+    }
+    const _perm = makePermutation();
+    function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+    function lerp(t, a, b) { return a + t * (b - a); }
+    function grad(hash, x, y, z) {
+      const h = hash & 15;
+      const u = h < 8 ? x : y;
+      const v = h < 4 ? y : (h === 12 || h === 14 ? x : z);
+      return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+    }
+    function noise3(x, y, z) {
+      const X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255;
+      x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
+      const u = fade(x), v = fade(y), w = fade(z);
+      const A = _perm[X] + Y, AA = _perm[A] + Z, AB = _perm[A + 1] + Z;
+      const B = _perm[X + 1] + Y, BA = _perm[B] + Z, BB = _perm[B + 1] + Z;
+      return lerp(w, lerp(v, lerp(u, grad(_perm[AA], x, y, z), grad(_perm[BA], x - 1, y, z)),
+                              lerp(u, grad(_perm[AB], x, y - 1, z), grad(_perm[BB], x - 1, y - 1, z))),
+                     lerp(v, lerp(u, grad(_perm[AA + 1], x, y, z - 1), grad(_perm[BA + 1], x - 1, y, z - 1)),
+                              lerp(u, grad(_perm[AB + 1], x, y - 1, z - 1), grad(_perm[BB + 1], x - 1, y - 1, z - 1))));
+    }
+    function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+    function makeGlowTexture() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 128;
+      const cx = c.getContext('2d');
+      const g = cx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      g.addColorStop(0, 'rgba(255,255,255,1)');
+      g.addColorStop(0.3, 'rgba(255,255,255,0.55)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      cx.fillStyle = g;
+      cx.fillRect(0, 0, 128, 128);
+      return new THREE.CanvasTexture(c);
+    }
+    const glowTex = makeGlowTexture();
+
+    const C_DIM    = { r: 0.015, g: 0.11, b: 0.16 };
+    const C_BASE   = { r: 0.0,   g: 0.68, b: 0.94 };
+    const C_BRIGHT = { r: 0.91,  g: 1.0,  b: 1.0 };
+    function colorAt(colors, i, brightness) {
+      const e = clamp01(brightness);
+      let r, g, b;
+      if (e < 0.5) {
+        const u = e * 2;
+        r = lerp(u, C_DIM.r, C_BASE.r); g = lerp(u, C_DIM.g, C_BASE.g); b = lerp(u, C_DIM.b, C_BASE.b);
+      } else {
+        const u = (e - 0.5) * 2;
+        r = lerp(u, C_BASE.r, C_BRIGHT.r); g = lerp(u, C_BASE.g, C_BRIGHT.g); b = lerp(u, C_BASE.b, C_BRIGHT.b);
+      }
+      colors[i * 3] = r; colors[i * 3 + 1] = g; colors[i * 3 + 2] = b;
+    }
+
+    const root = new THREE.Group();
+    scene.add(root);
+
+    function makeStroke(pointCount) {
+      const positions = new Float32Array(pointCount * 3);
+      const colors = new Float32Array(pointCount * 3);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, opacity: 0.95 });
+      const line = new THREE.Line(geo, mat);
+      return { line, geo, positions, colors };
+    }
+
+    // Plain WebGL lines can't render thick (browsers ignore lineWidth). To get a real
+    // "thick glowing energy path" look, layer several thin lines with tiny offsets around
+    // a bright core — bright center + dimmer halo = the layered glow the design calls for.
+    function makeStrokeBundle(parent, pointCount, haloCount, haloSpread) {
+      const members = [];
+      for (let h = 0; h <= haloCount; h++) {
+        const s = makeStroke(pointCount);
+        parent.add(s.line);
+        const isCore = h === 0;
+        members.push({
+          ...s,
+          offX: isCore ? 0 : (Math.random() - 0.5) * haloSpread,
+          offY: isCore ? 0 : (Math.random() - 0.5) * haloSpread,
+          offZ: isCore ? 0 : (Math.random() - 0.5) * haloSpread,
+          brightMul: isCore ? 1.0 : Math.max(0.18, 0.6 - h * 0.12),
+        });
+      }
+      return members;
+    }
+
+    // ==================== LAYER 1 — fragmented orbital arcs (define the round silhouette) ====================
+    function createArcSystem(rx, ry, fragRange, riderCount, haloCount, haloSpread, brightRange) {
+      const group = new THREE.Group();
+      group.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+      const spinAxis = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+      const spinSpeed = (0.015 + Math.random() * 0.02) * (Math.random() < 0.5 ? 1 : -1);
+
+      const fragCount = fragRange[0] + Math.floor(Math.random() * (fragRange[1] - fragRange[0] + 1));
+      const fragments = [];
+      for (let f = 0; f < fragCount; f++) {
+        const slot = 1 / fragCount;
+        const gap = slot * (0.15 + Math.random() * 0.25);
+        fragments.push({ start: f * slot, end: (f + 1) * slot - gap });
+      }
+      const N = 22;
+      const strokes = fragments.map((fr) => ({
+        members: makeStrokeBundle(group, N, haloCount, haloSpread), frag: fr, N,
+      }));
+
+      const riderPos = new Float32Array(riderCount * 3);
+      const riderCol = new Float32Array(riderCount * 3);
+      const riderFrac = Array.from({ length: riderCount }, () => Math.random());
+      const riderGeo = new THREE.BufferGeometry();
+      riderGeo.setAttribute('position', new THREE.BufferAttribute(riderPos, 3));
+      riderGeo.setAttribute('color', new THREE.BufferAttribute(riderCol, 3));
+      const riderMat = new THREE.PointsMaterial({ size: 0.022, map: glowTex, transparent: true, depthWrite: false, vertexColors: true, blending: THREE.AdditiveBlending, opacity: 0.95, sizeAttenuation: true });
+      const riders = new THREE.Points(riderGeo, riderMat);
+      group.add(riders);
+
+      root.add(group);
+      return {
+        group, rx, ry, spinAxis, spinSpeed, strokes,
+        baseBright: brightRange[0] + Math.random() * (brightRange[1] - brightRange[0]),
+        fieldPeriod: 7 + Math.random() * 10,
+        fieldPhase: Math.random() * Math.PI * 2,
+        riderPos, riderCol, riderFrac, riderGeo, riderSpeed: 0.04 + Math.random() * 0.07,
+      };
+    }
+
+    function updateArcSystem(sys, dt, t, stateBright) {
+      sys.group.rotateOnAxis(sys.spinAxis, dt * sys.spinSpeed);
+      // "dynamic electromagnetic field" breathing — some arcs dim toward near-invisible, some flare
+      const fieldEnvelope = 0.35 + 0.65 * Math.abs(Math.sin(t / sys.fieldPeriod + sys.fieldPhase));
+      sys.strokes.forEach((s) => {
+        s.members.forEach((mem) => {
+          for (let j = 0; j < s.N; j++) {
+            const u = lerp(j / (s.N - 1), s.frag.start, s.frag.end);
+            const angle = u * Math.PI * 2;
+            mem.positions[j * 3] = Math.cos(angle) * sys.rx + mem.offX;
+            mem.positions[j * 3 + 1] = Math.sin(angle) * sys.ry + mem.offY;
+            mem.positions[j * 3 + 2] = mem.offZ;
+            const edgeFade = Math.sin(Math.PI * (j / (s.N - 1)));
+            const flicker = 0.65 + 0.35 * Math.sin(t * 0.5 + u * 9);
+            colorAt(mem.colors, j, sys.baseBright * edgeFade * flicker * fieldEnvelope * mem.brightMul * stateBright);
+          }
+          mem.geo.attributes.position.needsUpdate = true;
+          mem.geo.attributes.color.needsUpdate = true;
+        });
+      });
+      for (let k = 0; k < sys.riderFrac.length; k++) {
+        const u = (sys.riderFrac[k] + t * sys.riderSpeed) % 1;
+        const angle = u * Math.PI * 2;
+        sys.riderPos[k * 3] = Math.cos(angle) * sys.rx;
+        sys.riderPos[k * 3 + 1] = Math.sin(angle) * sys.ry;
+        sys.riderPos[k * 3 + 2] = 0;
+        colorAt(sys.riderCol, k, 0.85 * fieldEnvelope * stateBright);
+      }
+      sys.riderGeo.attributes.position.needsUpdate = true;
+      sys.riderGeo.attributes.color.needsUpdate = true;
+    }
+
+    // outer arcs: THICK — 5-layer glow bundle, brightest tier, establishes the silhouette
+    const outerArcs = Array.from({ length: 8 }, () =>
+      createArcSystem(0.85 + Math.random() * 0.45, 0.65 + Math.random() * 0.4, [2, 3], 14, 4, 0.028, [0.55, 0.9]));
+    // core arcs: thin/secondary — barely any halo, dimmer
+    const coreArcs = Array.from({ length: 6 }, () =>
+      createArcSystem(0.16 + Math.random() * 0.16, 0.13 + Math.random() * 0.14, [1, 2], 6, 1, 0.006, [0.25, 0.4]));
+
+    // ==================== LAYER 2 — internal flowing energy filaments ====================
+    // Control points via a bounded random walk (not independent random points) — consecutive
+    // points stay close together, so the curve flows instead of zigzagging between distant jumps.
+    function walkControlPoints(radius, count) {
+      const ctrl = [];
+      let cur = new THREE.Vector3((Math.random() - 0.5) * radius * 0.5, (Math.random() - 0.5) * radius * 0.5, (Math.random() - 0.5) * radius * 0.5);
+      for (let i = 0; i < count; i++) {
+        ctrl.push(cur.clone());
+        const step = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(radius * 0.45);
+        cur = cur.clone().add(step);
+        if (cur.length() > radius) cur.setLength(radius * 0.8);
+      }
+      return ctrl;
+    }
+
+    function createFilament(radius, haloCount, haloSpread) {
+      const ctrl = walkControlPoints(radius, 7 + Math.floor(Math.random() * 4));
+      const curve = new THREE.CatmullRomCurve3(ctrl, Math.random() < 0.35);
+      const N = 46;
+      const base = curve.getPoints(N - 1);
+      return finishFilament(base, N, haloCount, haloSpread);
+    }
+
+    // a handful of genuine smooth spirals — guaranteed flowing, no randomness in the curve itself
+    function createSpiralFilament(radius, haloCount, haloSpread) {
+      const N = 54;
+      const turns = 2 + Math.random() * 2.5;
+      const heightSpan = radius * (0.9 + Math.random() * 0.6);
+      const rot = new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+      const base = [];
+      for (let i = 0; i < N; i++) {
+        const u = i / (N - 1);
+        const ang = u * Math.PI * 2 * turns;
+        const rr = radius * (0.25 + 0.75 * Math.sin(u * Math.PI));
+        const pt = new THREE.Vector3(Math.cos(ang) * rr, (u - 0.5) * heightSpan, Math.sin(ang) * rr);
+        pt.applyEuler(rot);
+        base.push(pt);
+      }
+      return finishFilament(base, N, haloCount, haloSpread);
+    }
+
+    function finishFilament(base, N, haloCount, haloSpread) {
+      const members = makeStrokeBundle(root, N, haloCount, haloSpread);
+      return {
+        members, N, base,
+        seed: Math.random() * 1000,
+        period: 5 + Math.random() * 9,
+        phase: Math.random() * Math.PI * 2,
+        flowSpeed: 0.5 + Math.random() * 0.7,
+      };
+    }
+
+    function updateFilament(f, dt, t, stateBright) {
+      const envelope = 0.25 + 0.75 * Math.abs(Math.sin(t / f.period + f.phase));
+      f.members.forEach((mem) => {
+        for (let j = 0; j < f.N; j++) {
+          const bp = f.base[j];
+          const nx = noise3(f.seed + j * 0.7, t * 0.15, 0) * 0.07;
+          const ny = noise3(f.seed + j * 0.7 + 50, t * 0.15, 0) * 0.07;
+          const nz = noise3(f.seed + j * 0.7 + 100, t * 0.15, 0) * 0.07;
+          mem.positions[j * 3] = bp.x + nx + mem.offX;
+          mem.positions[j * 3 + 1] = bp.y + ny + mem.offY;
+          mem.positions[j * 3 + 2] = bp.z + nz + mem.offZ;
+          const travel = 0.5 + 0.5 * Math.sin((j / f.N) * Math.PI * 2 * 3 - t * f.flowSpeed * 6);
+          colorAt(mem.colors, j, envelope * (0.25 + 0.75 * travel) * mem.brightMul * stateBright);
+        }
+        mem.geo.attributes.position.needsUpdate = true;
+        mem.geo.attributes.color.needsUpdate = true;
+      });
+    }
+
+    // primary: medium-thick (3-layer bundle), brighter — "most important internal structures"
+    const filaments = [
+      ...Array.from({ length: 3 }, () => createSpiralFilament(0.7, 2, 0.02)),
+      ...Array.from({ length: 6 }, () => createFilament(0.75, 2, 0.02)),
+      // secondary/core: thin, single line, dimmer
+      ...Array.from({ length: 6 }, () => createFilament(0.32, 0, 0)),
+    ];
+
+    // ==================== LAYER 3 — particles as secondary detail (much smaller than before) ====================
+    const AMBIENT_COUNT = 750;
+    const positions = new Float32Array(AMBIENT_COUNT * 3);
+    const pOffset = new Float32Array(AMBIENT_COUNT * 3);
+    const pDelta = new Float32Array(AMBIENT_COUNT * 3);
+    const pVel = new Float32Array(AMBIENT_COUNT * 3);
+    const pEnergy = new Float32Array(AMBIENT_COUNT);
+    const pSeed = new Float32Array(AMBIENT_COUNT);
+
+    for (let i = 0; i < AMBIENT_COUNT; i++) {
+      pSeed[i] = Math.random() * 1000;
+      pEnergy[i] = Math.random() * 0.15;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      const r = 0.95 * Math.pow(Math.random(), 1.7);
+      pOffset[i * 3] = Math.sin(phi) * Math.cos(theta) * r;
+      pOffset[i * 3 + 1] = Math.sin(phi) * Math.sin(theta) * r;
+      pOffset[i * 3 + 2] = Math.cos(phi) * r;
+    }
+    const colors = new Float32Array(AMBIENT_COUNT * 3);
+    const particleGeo = new THREE.BufferGeometry();
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particleGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const particleMat = new THREE.PointsMaterial({
+      size: 0.018, map: glowTex, transparent: true, depthWrite: false, vertexColors: true,
+      blending: THREE.AdditiveBlending, opacity: 0.55, sizeAttenuation: true,
+    });
+    const particles = new THREE.Points(particleGeo, particleMat);
+    root.add(particles);
+
+    function fireEnergyEvent(strength) {
+      const cx0 = (Math.random() - 0.5) * 0.6, cy0 = (Math.random() - 0.5) * 0.6, cz0 = (Math.random() - 0.5) * 0.6;
+      const radius = 0.2 + Math.random() * 0.2;
+      for (let j = 0; j < AMBIENT_COUNT; j++) {
+        const dx = pOffset[j * 3] - cx0, dy = pOffset[j * 3 + 1] - cy0, dz = pOffset[j * 3 + 2] - cz0;
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (d > radius) continue;
+        const falloff = 1 - d / radius;
+        pEnergy[j] = Math.min(1, pEnergy[j] + strength * falloff);
+        const inv = falloff * 0.35 / (d + 0.001);
+        pVel[j * 3] += dx * inv; pVel[j * 3 + 1] += dy * inv; pVel[j * 3 + 2] += dz * inv;
+      }
+    }
+
+    // ---------- state machine ----------
+    const STATE_TARGETS = {
+      IDLE:       { flow: 0.05,  flowSpeed: 0.12, eventRate: 0.5, bright: 1.0 },
+      ACTIVATING: { flow: 0.08,  flowSpeed: 0.18, eventRate: 1.0, bright: 1.15 },
+      LISTENING:  { flow: 0.035, flowSpeed: 0.09, eventRate: 0.7, bright: 1.1 },
+      PROCESSING: { flow: 0.16,  flowSpeed: 0.4,  eventRate: 3.2, bright: 1.35 },
+      SPEAKING:   { flow: 0.11,  flowSpeed: 0.26, eventRate: 2.0, bright: 1.3 },
+      ERROR:      { flow: 0.2,   flowSpeed: 0.45, eventRate: 1.5, bright: 1.2 },
+      SLEEPING:   { flow: 0.015, flowSpeed: 0.05, eventRate: 0.08, bright: 0.6 },
+    };
+    let currentState = 'IDLE';
+    let audioLevel = 0;
+    const p = { flow: 0.05, flowSpeed: 0.12, eventRate: 0.5, bright: 1.0 };
+    const SPRING = 1.3, DAMPING = 0.90;
+
+    // ---------- manual camera orbit + parallax ----------
+    let camTheta = 1.1, camPhi = 1.35, camRadius = 2.7;
+    let dragging = false, lastX = 0, lastY = 0;
+    let mouseNX = 0, mouseNY = 0;
+    const dom = renderer.domElement;
+    dom.style.cursor = 'grab';
+    dom.addEventListener('pointerdown', (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; dom.style.cursor = 'grabbing'; });
+    window.addEventListener('pointerup', () => { dragging = false; dom.style.cursor = 'grab'; });
+    window.addEventListener('pointermove', (e) => {
+      mouseNX = (e.clientX / window.innerWidth) * 2 - 1;
+      mouseNY = (e.clientY / window.innerHeight) * 2 - 1;
+      if (!dragging) return;
+      const dx = e.clientX - lastX, dy = e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      camTheta -= dx * 0.006;
+      camPhi = Math.min(2.6, Math.max(0.5, camPhi - dy * 0.006));
+    });
+    dom.addEventListener('wheel', (e) => {
+      camRadius = Math.min(5, Math.max(1.4, camRadius + e.deltaY * 0.002));
+    }, { passive: true });
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(0.05, clock.getDelta());
+      const t = clock.elapsedTime;
+
+      const target = STATE_TARGETS[currentState];
+      const EASE = 1 - Math.pow(0.001, dt);
+      for (const k in target) p[k] = lerp(EASE, p[k], target[k]);
+
+      outerArcs.forEach((sys) => updateArcSystem(sys, dt, t, p.bright));
+      coreArcs.forEach((sys) => updateArcSystem(sys, dt, t, p.bright));
+      filaments.forEach((f) => updateFilament(f, dt, t, p.bright));
+
+      if (Math.random() < p.eventRate * dt) fireEnergyEvent(0.6 + audioLevel * 0.4);
+
+      const flowStrength = p.flow * (1 + audioLevel * 0.9);
+      const flowSpeed = p.flowSpeed;
+
+      for (let i = 0; i < AMBIENT_COUNT; i++) {
+        const seed = pSeed[i];
+        const fx = noise3(seed, t * flowSpeed, 0);
+        const fy = noise3(seed + 111, t * flowSpeed, 0);
+        const fz = noise3(seed + 222, t * flowSpeed, 0);
+        const ax = fx * flowStrength - pDelta[i * 3] * SPRING;
+        const ay = fy * flowStrength - pDelta[i * 3 + 1] * SPRING;
+        const az = fz * flowStrength - pDelta[i * 3 + 2] * SPRING;
+        pVel[i * 3] = (pVel[i * 3] + ax * dt) * DAMPING;
+        pVel[i * 3 + 1] = (pVel[i * 3 + 1] + ay * dt) * DAMPING;
+        pVel[i * 3 + 2] = (pVel[i * 3 + 2] + az * dt) * DAMPING;
+        pDelta[i * 3] += pVel[i * 3] * dt;
+        pDelta[i * 3 + 1] += pVel[i * 3 + 1] * dt;
+        pDelta[i * 3 + 2] += pVel[i * 3 + 2] * dt;
+
+        positions[i * 3] = pOffset[i * 3] + pDelta[i * 3];
+        positions[i * 3 + 1] = pOffset[i * 3 + 1] + pDelta[i * 3 + 1];
+        positions[i * 3 + 2] = pOffset[i * 3 + 2] + pDelta[i * 3 + 2];
+
+        pEnergy[i] *= 0.985;
+        const e = pEnergy[i] + 0.05 * Math.abs(Math.sin(t * 0.6 + seed));
+        colorAt(colors, i, e);
+      }
+      particleGeo.attributes.position.needsUpdate = true;
+      particleGeo.attributes.color.needsUpdate = true;
+
+      if (!dragging) camTheta += dt * 0.02;
+      const wobblePhi = camPhi + mouseNY * 0.05;
+      const wobbleTheta = camTheta + mouseNX * 0.05;
+      const zoomBreathe = camRadius + Math.sin(t * 0.13) * 0.1;
+      camera.position.set(
+        zoomBreathe * Math.sin(wobblePhi) * Math.cos(wobbleTheta),
+        zoomBreathe * Math.cos(wobblePhi),
+        zoomBreathe * Math.sin(wobblePhi) * Math.sin(wobbleTheta)
+      );
+      camera.lookAt(0, 0, 0);
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.setState = function (state) { if (STATE_TARGETS[state]) currentState = state; };
+    window.setAudioLevel = function (level) { audioLevel = Math.max(0, Math.min(1, level)); };
+    window.demoCycle = function () {
+      const seq = ['IDLE', 'LISTENING', 'PROCESSING', 'SPEAKING', 'IDLE'];
+      let i = 0;
+      setInterval(() => { window.setState(seq[i % seq.length]); i++; }, 4000);
+    };
+  </script>
+</body>
+</html>

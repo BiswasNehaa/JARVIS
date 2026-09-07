@@ -3,7 +3,7 @@
 Progress tracker. ✅ = done, 🟡 = partial/in progress, ⬜ = not started.
 Delete this file once JARVIS is fully built — it's just a temporary progress view.
 
-**Overall: ~20% complete** (Phase 1 done and tested live, Phases 2-6 not started)
+**Overall: ~28% complete** (Phase 1 done, Phase 2 visual design in solid shape, wiring + Phases 3-6 not started)
 
 ## Phase 1 — Core loop (terminal only)
 - ✅ Repo scaffolded + pushed to GitHub
@@ -16,9 +16,16 @@ Delete this file once JARVIS is fully built — it's just a temporary progress v
 - ✅ First live end-to-end test — wake word, STT, brain, and TTS all confirmed working together
 
 ## Phase 2 — HUD widget
-- ⬜ Small always-on-top popup window (pywebview)
+- ✅ Small always-on-top popup window (pywebview + Three.js/WebGL)
+- 🟡 Holographic entity visual — round silhouette of curved orbital arcs + flowing internal
+      filaments + secondary particles, cyan quantum aesthetic, thickness/brightness hierarchy,
+      full IDLE/ACTIVATING/LISTENING/PROCESSING/SPEAKING/ERROR/SLEEPING state scaffold. User likes
+      the direction; still refining (last note: "little like it, quiet" — may need another pass)
+- ⬜ Transparent desktop-overlay window — tried pywebview (unsupported on Windows) and Qt
+      QWebEngineView (renders opaque gray, not real transparency); deferred, revisit via a native
+      OpenGL rewrite once the visual design itself is finalized (see CLAUDE.md)
 - ⬜ Boot-up sequence animation
-- ⬜ Glowing orb visual (Age of Ultron style), idle/listening/thinking/speaking states
+- ⬜ Wire HUD into the live voice loop (main.py) — currently a standalone visual test only
 
 ## Phase 3 — Speaker recognition
 - ⬜ Local voiceprint matching (know it's you)
