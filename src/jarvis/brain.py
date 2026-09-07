@@ -1,4 +1,4 @@
-import anthropic
+from groq import Groq
 
 from . import config
 
@@ -11,19 +11,18 @@ personality when it fits. Keep responses fairly short and punchy since they'll b
 _client = None
 
 
-def _get_client() -> anthropic.Anthropic:
+def _get_client() -> Groq:
     global _client
     if _client is None:
-        _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        _client = Groq(api_key=config.GROQ_API_KEY)
     return _client
 
 
 def respond(user_text: str, history: list[dict]) -> str:
-    messages = history + [{"role": "user", "content": user_text}]
-    response = _get_client().messages.create(
-        model=config.CLAUDE_MODEL,
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history, {"role": "user", "content": user_text}]
+    response = _get_client().chat.completions.create(
+        model=config.GROQ_MODEL,
         max_tokens=400,
-        system=SYSTEM_PROMPT,
         messages=messages,
     )
-    return response.content[0].text
+    return response.choices[0].message.content

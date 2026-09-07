@@ -1,4 +1,4 @@
-anthropic
+groq
 pvporcupine
 pvrecorder
 faster-whisper

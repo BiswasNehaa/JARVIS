@@ -7,15 +7,17 @@ naturally, and it talks back — charming, witty, a little flirty, and genuinely
 
 ```
 mic → wake word ("jarvis") → record your request → speech-to-text
-    → Claude (the brain/personality) → text-to-speech → spoken reply
+    → Groq/Llama (the brain/personality) → text-to-speech → spoken reply
 ```
 
 - **Wake word** — [Porcupine](https://picovoice.ai/) with its built-in "Jarvis" keyword (free, offline, no training needed)
 - **Speech-to-text** — [`faster-whisper`](https://github.com/SYSTRAN/faster-whisper) running locally (free, private)
-- **Brain** — [Claude API](https://console.anthropic.com/) with a custom JARVIS personality prompt
+- **Brain** — [Groq API](https://console.groq.com/) running Llama 3.3 70B, free tier, with a custom JARVIS personality prompt
 - **Text-to-speech** — [`edge-tts`](https://github.com/rany2/edge-tts) (free Microsoft neural voices, no API key)
 
-Everything is free except the Claude API calls, which are usage-based but cheap for personal use.
+Everything here is free — no credit card needed anywhere. `brain.py` is intentionally the only file
+that talks to the LLM, so swapping to a paid model later (e.g. Claude, once you want the extra
+polish) is a one-file change — see the commented-out lines in `.env.example`.
 
 ## Setup
 
@@ -26,8 +28,8 @@ Everything is free except the Claude API calls, which are usage-based but cheap 
    .venv\Scripts\activate
    pip install -r requirements.txt
    ```
-3. Get your API keys:
-   - Anthropic: https://console.anthropic.com/ → create an API key
+3. Get your API keys (both free, no credit card):
+   - Groq: https://console.groq.com/keys → sign up free → create an API key
    - Picovoice: https://console.picovoice.ai/ → sign up free → copy your AccessKey
 4. Copy `.env.example` to `.env` and fill in both keys.
 5. Run it:
@@ -38,7 +40,7 @@ Everything is free except the Claude API calls, which are usage-based but cheap 
 
 ## Roadmap
 
-- [x] **Phase 1 — Core loop** — wake word → STT → Claude → TTS, terminal only
+- [x] **Phase 1 — Core loop** — wake word → STT → Groq/Llama → TTS, terminal only
 - [ ] **Phase 2 — HUD widget** — small always-on-top popup with a glowing orb (Age of Ultron style),
       boot-up sequence, listening/thinking/speaking animation states
 - [ ] **Phase 3 — Speaker recognition** — local voiceprint matching; greets known voices by name,
