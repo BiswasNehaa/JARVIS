@@ -6,24 +6,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-PICOVOICE_ACCESS_KEY = os.getenv("PICOVOICE_ACCESS_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-WAKE_WORD = "jarvis"
 COMMAND_RECORD_SECONDS = 5
 WHISPER_MODEL_SIZE = "base.en"
 
 
 def require_keys() -> None:
-    missing = [
-        name
-        for name, value in [
-            ("GROQ_API_KEY", GROQ_API_KEY),
-            ("PICOVOICE_ACCESS_KEY", PICOVOICE_ACCESS_KEY),
-        ]
-        if not value
-    ]
-    if missing:
-        print(f"Missing required environment variables: {', '.join(missing)}")
-        print("Copy .env.example to .env and fill in your API keys.")
+    if not GROQ_API_KEY:
+        print("Missing required environment variable: GROQ_API_KEY")
+        print("Copy .env.example to .env and fill in your API key.")
         sys.exit(1)

@@ -1,16 +1,16 @@
 # JARVIS
 
-A personal voice assistant with a Tony Stark AI vibe: say **"Jarvis"** to wake it up, talk to it
+A personal voice assistant with a Tony Stark AI vibe: say **"Hey Jarvis"** to wake it up, talk to it
 naturally, and it talks back — charming, witty, a little flirty, and genuinely helpful.
 
 ## How it works (v1)
 
 ```
-mic → wake word ("jarvis") → record your request → speech-to-text
+mic → wake word ("hey jarvis") → record your request → speech-to-text
     → Groq/Llama (the brain/personality) → text-to-speech → spoken reply
 ```
 
-- **Wake word** — [Porcupine](https://picovoice.ai/) with its built-in "Jarvis" keyword (free, offline, no training needed)
+- **Wake word** — [openWakeWord](https://github.com/dscripka/openWakeWord) with its pretrained "Hey Jarvis" model (free, open-source, fully offline, no key/signup needed)
 - **Speech-to-text** — [`faster-whisper`](https://github.com/SYSTRAN/faster-whisper) running locally (free, private)
 - **Brain** — [Groq API](https://console.groq.com/) running Llama 3.3 70B, free tier, with a custom JARVIS personality prompt
 - **Text-to-speech** — [`edge-tts`](https://github.com/rany2/edge-tts) (free Microsoft neural voices, no API key)
@@ -28,15 +28,18 @@ polish) is a one-file change — see the commented-out lines in `.env.example`.
    .venv\Scripts\activate
    pip install -r requirements.txt
    ```
-3. Get your API keys (both free, no credit card):
+3. Get your API key (free, no credit card):
    - Groq: https://console.groq.com/keys → sign up free → create an API key
-   - Picovoice: https://console.picovoice.ai/ → sign up free → copy your AccessKey
-4. Copy `.env.example` to `.env` and fill in both keys.
-5. Run it:
+4. Copy `.env.example` to `.env` and fill in the key.
+5. One-time download of the wake-word model (openWakeWord doesn't bundle it in the pip package):
+   ```
+   python -c "from openwakeword.utils import download_models; download_models()"
+   ```
+6. Run it:
    ```
    python -m src.jarvis.main
    ```
-   Say **"Jarvis"**, wait for "listening...", then speak your request.
+   Say **"Hey Jarvis"**, wait for "listening...", then speak your request.
 
 ## Roadmap
 

@@ -1,6 +1,6 @@
 # JARVIS — project context
 
-Personal voice assistant, Tony Stark AI vibe. Wake word "Jarvis" → listens → responds via Claude →
+Personal voice assistant, Tony Stark AI vibe. Wake word "Hey Jarvis" → listens → responds via Groq/Llama →
 speaks back in a charming, witty, flirty personality. See `README.md` for setup/run instructions and
 the phase roadmap.
 
@@ -14,8 +14,11 @@ the phase roadmap.
   `brain.py` is the only file that talks to the LLM, so that swap is intentionally a one-file change
   (see commented-out Anthropic lines in `.env.example`). Don't re-suggest paid APIs unless the user
   brings up budget again.
-- **Wake word**: Porcupine's *built-in* "jarvis" keyword — deliberately avoided custom wake-word
-  training (would require a Picovoice Console account + manual `.ppn` file generation).
+- **Wake word**: openWakeWord's pretrained "hey_jarvis" model — switched off Picovoice/Porcupine
+  (2026-09-07) after the user found Picovoice discontinued its free tier. openWakeWord is open-source,
+  fully offline, no key/signup, and ships this exact wake word pretrained — no custom training needed.
+  Requires a one-time model download on first setup (see README step 5). Audio capture uses
+  `sounddevice` (`src/jarvis/audio.py`) instead of Picovoice's `pvrecorder`.
 - **Personality**: full charm from day one (confident, witty, flirty banter), not a subtle/professional
   starting point — this was an explicit user choice, not a default.
 - **HUD visual target**: a glowing, swirling orb of light — reference is JARVIS's holographic form
@@ -27,14 +30,17 @@ the phase roadmap.
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/Llama → TTS) is scaffolded in `src/jarvis/`. Not
-yet tested end-to-end — needs the user's Groq + Picovoice API keys in `.env` first (both free).
+yet tested end-to-end — needs the user's Groq API key in `.env` (the `GROQ_API_KEY=` line was still
+empty as of the last check, worth confirming with the user) and the one-time openWakeWord model
+download.
 
 ## Architecture
 
 ```
 src/jarvis/
-  config.py      env vars, constants (wake word, model, record duration)
-  wake_word.py   Porcupine handle (built-in "jarvis" keyword)
+  config.py      env vars, constants (model, record duration)
+  audio.py        sounddevice microphone wrapper (16kHz mono int16 frames)
+  wake_word.py   openWakeWord model (pretrained "hey_jarvis")
   stt.py         faster-whisper transcription
   brain.py       Groq API call (Llama 3.3 70B) + JARVIS system prompt/personality
   tts.py         edge-tts synthesis + playback
