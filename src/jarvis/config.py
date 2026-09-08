@@ -17,6 +17,14 @@ SILENCE_HANG_MS = 2000  # stop recording after this much quiet, once you've star
 SILENCE_RMS_THRESHOLD = 300  # int16 amplitude below this counts as "quiet" — tune if it cuts you off early
 WHISPER_MODEL_SIZE = "base.en"
 
+AUDIO_LEVEL_REFERENCE = 3000  # int16 mean-abs amplitude mapped to "full" HUD waveform reactivity — tune by ear
+STOP_PHRASES = (  # said mid-command, ends the turn immediately instead of going to the brain
+    "stop session",
+    "end session",
+    "jarvis stop",
+    "stop listening",
+)
+
 
 def require_keys() -> None:
     if not GROQ_API_KEY:

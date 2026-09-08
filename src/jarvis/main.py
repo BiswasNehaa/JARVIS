@@ -22,7 +22,10 @@ def _record_command(mic: Microphone) -> list[int]:
         frame = mic.read_frame()
         samples.extend(frame.tolist())
 
-        if np.abs(frame).mean() >= config.SILENCE_RMS_THRESHOLD:
+        amplitude = np.abs(frame).mean()
+        hud.set_audio_level(min(1.0, amplitude / config.AUDIO_LEVEL_REFERENCE))
+
+        if amplitude >= config.SILENCE_RMS_THRESHOLD:
             speech_started = True
             silent_frames = 0
         elif speech_started:
@@ -31,6 +34,11 @@ def _record_command(mic: Microphone) -> list[int]:
                 break
 
     return samples
+
+
+def _is_stop_command(text: str) -> bool:
+    lowered = text.lower()
+    return any(phrase in lowered for phrase in config.STOP_PHRASES)
 
 
 def _run_voice_loop() -> None:
@@ -47,19 +55,28 @@ def _run_voice_loop() -> None:
                 continue
 
             print("Wake word detected — listening...")
+            hud.show_window()
             hud.set_state("ACTIVATING")
             time.sleep(ACTIVATING_FLASH_SECONDS)
             hud.set_state("LISTENING")
 
             try:
                 samples = _record_command(mic)
+                hud.set_audio_level(0)
 
                 text = stt.transcribe(samples)
                 if not text:
                     print("(didn't catch that)")
                     hud.set_state("IDLE")
+                    hud.hide_window()
                     continue
                 print(f"You: {text}")
+
+                if _is_stop_command(text):
+                    print("(session stopped)")
+                    hud.set_state("IDLE")
+                    hud.hide_window()
+                    continue
 
                 hud.set_state("PROCESSING")
                 reply = brain.respond(text, history)
@@ -77,6 +94,7 @@ def _run_voice_loop() -> None:
                 time.sleep(1.0)
 
             hud.set_state("IDLE")
+            hud.hide_window()
 
 
 def main() -> None:
