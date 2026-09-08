@@ -3,7 +3,7 @@
 Progress tracker. ✅ = done, 🟡 = partial/in progress, ⬜ = not started.
 Delete this file once JARVIS is fully built — it's just a temporary progress view.
 
-**Overall: ~34% complete** (Phase 1 done + a turn-taking fix, Phase 2 visual redesigned to a minimal waveform line and wired into the live voice loop, transparency/boot animation/audio-reactivity + Phases 3-6 not started)
+**Overall: ~37% complete** (Phase 1 done + a turn-taking fix, Phase 2 visual redesigned to a minimal waveform line, wired into the live voice loop, and turned into a Win+H-style popup with a stop command and live mic reactivity — position not yet confirmed live; transparency/boot animation/TTS-audio-reactivity + Phases 3-6 not started)
 
 ## Phase 1 — Core loop (terminal only)
 - ✅ Repo scaffolded + pushed to GitHub
@@ -24,12 +24,21 @@ Delete this file once JARVIS is fully built — it's just a temporary progress v
       a reference image (Arctic Monkeys "Do I Wanna Know?" cover) the user provided. User confirmed
       "this is good." Full IDLE/ACTIVATING/LISTENING/PROCESSING/SPEAKING/ERROR/SLEEPING state scaffold
       drives amplitude/frequency/speed/hump-count, not color.
+- 🟡 Win+H-style popup behavior (2026-09-09) — hidden by default, `hud.show_window()` on wake word,
+      `hud.hide_window()` after each turn or on a stop command; small bar (300x76) docked bottom-center
+      instead of a big centered square, matching a Windows-dictation-toolbar reference screenshot.
+      Verified programmatically (correct size/position, `IsWindowVisible: True`) but **not yet seen live
+      by the user** — confirm it actually looks right and nudge `BOTTOM_MARGIN`/size in `hud.py` if not
+- ✅ Voice stop command — saying "stop session" / "jarvis stop" / etc. (see `config.STOP_PHRASES`) ends
+      the turn immediately and hides the popup, without waiting on the brain/TTS
+- ✅ Live mic reactivity while listening — the waveform's amplitude now follows real mic RMS, not just a
+      canned per-state animation; TTS/SPEAKING is still synthetic (see next item)
 - ⬜ Transparent desktop-overlay window — tried pywebview (unsupported on Windows) and Qt
       QWebEngineView (renders opaque gray, not real transparency); deferred, revisit via a native
       OpenGL rewrite once the visual design itself is finalized (see CLAUDE.md)
 - ⬜ Boot-up sequence animation
-- ⬜ Real audio-level reactivity — `window.setAudioLevel()` exists and feeds the waveform's amplitude
-      but nothing calls it yet with real mic/TTS levels
+- ⬜ Real audio-level reactivity during SPEAKING — `playsound` gives no amplitude hook; would need a
+      different TTS playback path to drive the waveform from actual voice output
 - ✅ Wire HUD into the live voice loop (main.py) — running `python -m src.jarvis.main` now opens the HUD
       and drives it through IDLE → ACTIVATING → LISTENING → PROCESSING → SPEAKING → ERROR live as you talk
       to it, instead of the old headless terminal loop / separate `hud.py` demo cycle

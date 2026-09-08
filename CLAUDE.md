@@ -33,10 +33,28 @@ the phase roadmap.
   in a couple of places tapering to near-flat elsewhere (matches the reference), not one uniform sine
   wave. State scaffold (`IDLE/ACTIVATING/LISTENING/PROCESSING/SPEAKING/ERROR/SLEEPING`) drives
   amplitude/frequency/speed/hump-count rather than color — still monochrome white throughout, including
-  ERROR (a fast opacity flicker, not a color change). `window.setAudioLevel()` is wired in (feeds
-  amplitude) but not yet fed real mic/TTS levels — a natural next step given this is now literally a
-  waveform shape. **Don't rebuild the structural concept again** without the user explicitly asking —
-  iterate within it.
+  ERROR (a fast opacity flicker, not a color change). `window.setAudioLevel()` is fed real mic RMS
+  during `LISTENING` (`main.py`'s `_record_command`); `SPEAKING` still uses synthetic per-state motion,
+  not real TTS playback levels (`playsound` gives no amplitude hook — would need a different playback
+  path to do properly; deferred). **Don't rebuild the structural concept again** without the user
+  explicitly asking — iterate within it.
+- **Popup behavior — added 2026-09-09, modeled on Windows' own voice-typing toolbar (Win+H).** The HUD
+  is no longer a persistent always-open window: `hud.create_window()` now creates it `hidden=True`, and
+  `main.py` calls `hud.show_window()` right when the wake word fires and `hud.hide_window()` once the
+  turn ends (normally, on STT returning nothing, or on a stop command — see below). Size/position also
+  changed from a big centered square to a small bar docked bottom-center, matching the reference
+  screenshot the user sent of Windows' own dictation toolbar: `POPUP_WIDTH=300`, `POPUP_HEIGHT=76`,
+  `BOTTOM_MARGIN=110` in `hud.py`. Verified via `GetWindowRect`/`IsWindowVisible` that the window is
+  created at the correct size/position and does become visible — **not yet visually confirmed by the
+  user** (my own screenshot attempts kept getting stacked behind the user's own focused window, a
+  Windows foreground-lock quirk unrelated to the popup code itself — see if `BOTTOM_MARGIN`/size need
+  adjusting once they've actually seen it live). True rounded/transparent corners are still the
+  deferred item above — for now it's a small rectangular dark bar, not a literal rounded pill.
+- **Stop command — added 2026-09-09**: saying a phrase from `config.STOP_PHRASES` ("stop session", "end
+  session", "jarvis stop", "stop listening") while JARVIS is listening ends the turn immediately
+  (skips the brain/TTS call) and hides the popup, via `main.py`'s `_is_stop_command()`. Silent by
+  design (no spoken acknowledgment) so it dismisses quickly — revisit if the user wants a confirmation
+  sound/line instead.
 - **Transparent desktop-overlay window — deferred, not solved**: tried `pywebview`'s `transparent=True`
   (confirmed via their own docs: unsupported on Windows), then PyQt6 `QWebEngineView` with
   `WA_TranslucentBackground` (rendered a flat opaque gray, not real transparency — matches multiple
@@ -62,12 +80,15 @@ Edge-TTS ceiling; ElevenLabs is the fallback if ever worth the free-tier limit �
 Phase 2 (HUD): visual design was rebuilt 2026-09-09 into the minimal white-waveform-line look (see
 above) and wired into the live voice loop (2026-09-08) — `python -m src.jarvis.main` opens the HUD
 window and drives it through IDLE → ACTIVATING → LISTENING → PROCESSING → SPEAKING (ERROR on a failed
-turn) as you actually talk to it. `python -m src.jarvis.hud` still exists separately as the standalone
-demo-cycle visual test. Also fixed 2026-09-09: the voice loop was cutting users off mid-sentence and
-mis-firing on natural speech pauses — `MAX_COMMAND_SECONDS` 8→25 and `SILENCE_HANG_MS` 1200→2000 in
-`config.py` (not yet re-confirmed live by the user after the change). Remaining Phase 2 items:
-transparent overlay window (deferred, see above), a boot-up animation, and real audio-level reactivity
-on the waveform (`window.setAudioLevel()` exists but isn't fed real mic/TTS levels yet).
+turn) as you actually talk to it. It's now also popup-style (2026-09-09, see above): hidden until the
+wake word, small bar docked bottom-center, hides again after each turn — **not yet visually confirmed
+live**, only verified programmatically. `python -m src.jarvis.hud` still exists separately as the
+standalone demo-cycle visual test (shows immediately, ignores the hide/show choreography). Also fixed
+2026-09-09: the voice loop was cutting users off mid-sentence and mis-firing on natural speech pauses —
+`MAX_COMMAND_SECONDS` 8→25 and `SILENCE_HANG_MS` 1200→2000 in `config.py` (not yet re-confirmed live by
+the user after the change, either). Remaining Phase 2 items: transparent overlay window (deferred, see
+above), a boot-up animation, real audio-level reactivity during SPEAKING (LISTENING is done), and
+user confirmation that the popup's size/position actually look right live.
 
 ## Architecture
 
