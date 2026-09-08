@@ -21,19 +21,22 @@ the phase roadmap.
   `sounddevice` (`src/jarvis/audio.py`) instead of Picovoice's `pvrecorder`.
 - **Personality**: full charm from day one (confident, witty, flirty banter), not a subtle/professional
   starting point — this was an explicit user choice, not a default.
-- **HUD visual concept (settled after many iterations, 2026-09-07/08)**: NOT a smooth glowing sphere,
-  NOT particles-connected-by-lines (constellation/network-graph look — explicitly rejected), NOT a
-  scattered multi-cluster particle cloud (looked like a galaxy — also rejected). Current direction the
-  user likes: one coherent round holographic silhouette built from (1) large fragmented/incomplete
-  orbital arcs in independent 3D planes with their own slow spin, (2) internal flowing energy
-  filaments (smooth curves via bounded-random-walk control points + a few true spirals — NOT sharp
-  zigzags), (3) particles reduced to secondary decoration riding along the arcs/filaments. Quantum-cyan
-  palette (`#00D9FF`/`#00AEEF`/`#5CE1FF`/`#E8FFFF`), thickness/brightness hierarchy (thick glowing
-  bundles for primary structures, thin dim single lines for background detail — see `makeStrokeBundle`
-  in `hud/index.html`, since plain WebGL lines can't render thick natively). Full state scaffold exists
-  (`IDLE/ACTIVATING/LISTENING/PROCESSING/SPEAKING/ERROR/SLEEPING`) but only visual params are wired so
-  far — no real mic/audio reactivity yet. **Don't rebuild the structural concept again** unless the user
-  explicitly says so — iterate within it (this took ~10 rounds of rejected directions to converge on).
+- **HUD visual concept — replaced 2026-09-09.** The old cyan holographic orbital-arc/filament Three.js
+  scene (~10 rounds to converge on, 2026-09-07/08) was scrapped outright: user found it "looking really
+  bad." New direction, explicitly requested with a reference image (Arctic Monkeys "Do I Wanna Know?"
+  single cover): a single continuous white waveform-style line, monochrome, on a transparent/black
+  canvas — NOT concentric rings (a first attempt at "minimal line-art" using layered noise-perturbed
+  loops was also rejected as "weird looking" before landing on the literal-waveform version, which the
+  user confirmed "this is good"). Implementation is now plain 2D Canvas, not WebGL/Three.js — `hud/`
+  has no vendored library anymore. The line is `POINTS` samples of `sin(...) * envelope(...)`, where
+  `envelope()` sums a few Gaussian "bursts" positioned along the line so it reads as dense oscillation
+  in a couple of places tapering to near-flat elsewhere (matches the reference), not one uniform sine
+  wave. State scaffold (`IDLE/ACTIVATING/LISTENING/PROCESSING/SPEAKING/ERROR/SLEEPING`) drives
+  amplitude/frequency/speed/hump-count rather than color — still monochrome white throughout, including
+  ERROR (a fast opacity flicker, not a color change). `window.setAudioLevel()` is wired in (feeds
+  amplitude) but not yet fed real mic/TTS levels — a natural next step given this is now literally a
+  waveform shape. **Don't rebuild the structural concept again** without the user explicitly asking —
+  iterate within it.
 - **Transparent desktop-overlay window — deferred, not solved**: tried `pywebview`'s `transparent=True`
   (confirmed via their own docs: unsupported on Windows), then PyQt6 `QWebEngineView` with
   `WA_TranslucentBackground` (rendered a flat opaque gray, not real transparency — matches multiple
@@ -56,11 +59,15 @@ another swap is ever needed, their lineup has shifted before). `TTS_VOICE`/`TTS_
 as "best of the free options so far" but user still finds it lacks real emotional delivery (known free
 Edge-TTS ceiling; ElevenLabs is the fallback if ever worth the free-tier limit — see `feedback_commit_after_milestones`-adjacent context, not re-litigated unless user brings up budget/voice again).
 
-Phase 2 (HUD): visual design is in solid shape (see above) and now wired into the live voice loop
-(2026-09-08) — `python -m src.jarvis.main` opens the HUD window and drives it through
-IDLE → ACTIVATING → LISTENING → PROCESSING → SPEAKING (ERROR on a failed turn) as you actually talk to
-it. `python -m src.jarvis.hud` still exists separately as the standalone demo-cycle visual test.
-Remaining Phase 2 items: transparent overlay window (deferred, see above) and a boot-up animation.
+Phase 2 (HUD): visual design was rebuilt 2026-09-09 into the minimal white-waveform-line look (see
+above) and wired into the live voice loop (2026-09-08) — `python -m src.jarvis.main` opens the HUD
+window and drives it through IDLE → ACTIVATING → LISTENING → PROCESSING → SPEAKING (ERROR on a failed
+turn) as you actually talk to it. `python -m src.jarvis.hud` still exists separately as the standalone
+demo-cycle visual test. Also fixed 2026-09-09: the voice loop was cutting users off mid-sentence and
+mis-firing on natural speech pauses — `MAX_COMMAND_SECONDS` 8→25 and `SILENCE_HANG_MS` 1200→2000 in
+`config.py` (not yet re-confirmed live by the user after the change). Remaining Phase 2 items:
+transparent overlay window (deferred, see above), a boot-up animation, and real audio-level reactivity
+on the waveform (`window.setAudioLevel()` exists but isn't fed real mic/TTS levels yet).
 
 ## Architecture
 
@@ -77,7 +84,6 @@ src/jarvis/
   main.py        orchestrates the voice loop AND drives the HUD live via hud.set_state() at each
                  IDLE/ACTIVATING/LISTENING/PROCESSING/SPEAKING/ERROR transition
 hud/
-  index.html     the HUD itself — Three.js/WebGL scene, self-contained (noise fn, arc/filament
-                 systems, state machine), see "HUD visual concept" above before editing
-  vendor/        three.min.js, vendored locally (no CDN dependency at runtime)
+  index.html     the HUD itself — plain 2D Canvas, self-contained (envelope fn, state machine), see
+                 "HUD visual concept" above before editing. No external libraries/vendor dir anymore.
 ```
