@@ -3,7 +3,7 @@
 Progress tracker. ✅ = done, 🟡 = partial/in progress, ⬜ = not started.
 Delete this file once JARVIS is fully built — it's just a temporary progress view.
 
-**Overall: ~37% complete** (Phase 1 done + a turn-taking fix, Phase 2 visual redesigned to a minimal waveform line, wired into the live voice loop, and turned into a Win+H-style popup with a stop command and live mic reactivity — position not yet confirmed live; transparency/boot animation/TTS-audio-reactivity + Phases 3-6 not started)
+**Overall: ~38% complete** (Phase 1 done + a turn-taking fix, Phase 2 visual redesigned to a minimal waveform line, wired into the live voice loop, and turned into a Win+H-style popup with a stop command and live mic reactivity — user confirmed live; transparency/boot animation/TTS-audio-reactivity + Phases 3-6 not started)
 
 ## Phase 1 — Core loop (terminal only)
 - ✅ Repo scaffolded + pushed to GitHub
@@ -24,11 +24,10 @@ Delete this file once JARVIS is fully built — it's just a temporary progress v
       a reference image (Arctic Monkeys "Do I Wanna Know?" cover) the user provided. User confirmed
       "this is good." Full IDLE/ACTIVATING/LISTENING/PROCESSING/SPEAKING/ERROR/SLEEPING state scaffold
       drives amplitude/frequency/speed/hump-count, not color.
-- 🟡 Win+H-style popup behavior (2026-09-09) — hidden by default, `hud.show_window()` on wake word,
+- ✅ Win+H-style popup behavior (2026-09-09) — hidden by default, `hud.show_window()` on wake word,
       `hud.hide_window()` after each turn or on a stop command; small bar (300x76) docked bottom-center
       instead of a big centered square, matching a Windows-dictation-toolbar reference screenshot.
-      Verified programmatically (correct size/position, `IsWindowVisible: True`) but **not yet seen live
-      by the user** — confirm it actually looks right and nudge `BOTTOM_MARGIN`/size in `hud.py` if not
+      User confirmed live: "yeah cool i like it"
 - ✅ Voice stop command — saying "stop session" / "jarvis stop" / etc. (see `config.STOP_PHRASES`) ends
       the turn immediately and hides the popup, without waiting on the brain/TTS
 - ✅ Live mic reactivity while listening — the waveform's amplitude now follows real mic RMS, not just a
