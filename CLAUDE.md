@@ -56,8 +56,11 @@ another swap is ever needed, their lineup has shifted before). `TTS_VOICE`/`TTS_
 as "best of the free options so far" but user still finds it lacks real emotional delivery (known free
 Edge-TTS ceiling; ElevenLabs is the fallback if ever worth the free-tier limit — see `feedback_commit_after_milestones`-adjacent context, not re-litigated unless user brings up budget/voice again).
 
-Phase 2 (HUD): visual design is in solid shape (see above), still standalone (`python -m
-src.jarvis.hud`, not wired into `main.py`'s voice loop yet).
+Phase 2 (HUD): visual design is in solid shape (see above) and now wired into the live voice loop
+(2026-09-08) — `python -m src.jarvis.main` opens the HUD window and drives it through
+IDLE → ACTIVATING → LISTENING → PROCESSING → SPEAKING (ERROR on a failed turn) as you actually talk to
+it. `python -m src.jarvis.hud` still exists separately as the standalone demo-cycle visual test.
+Remaining Phase 2 items: transparent overlay window (deferred, see above) and a boot-up animation.
 
 ## Architecture
 
@@ -69,8 +72,10 @@ src/jarvis/
   stt.py         faster-whisper transcription
   brain.py       Groq API call (GPT-OSS 120B) + JARVIS system prompt/personality
   tts.py         edge-tts synthesis + playback (markdown/emoji stripped before speaking)
-  hud.py         pywebview window hosting hud/index.html — standalone visual test for now
-  main.py        orchestrates the voice loop (does not yet call hud.py)
+  hud.py         pywebview window hosting hud/index.html + set_state() JS bridge; `python -m
+                 src.jarvis.hud` still runs it standalone as a demo-cycle visual test
+  main.py        orchestrates the voice loop AND drives the HUD live via hud.set_state() at each
+                 IDLE/ACTIVATING/LISTENING/PROCESSING/SPEAKING/ERROR transition
 hud/
   index.html     the HUD itself — Three.js/WebGL scene, self-contained (noise fn, arc/filament
                  systems, state machine), see "HUD visual concept" above before editing
