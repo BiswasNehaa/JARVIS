@@ -64,6 +64,22 @@ the phase roadmap.
   re-attempt browser-based transparency tricks — go straight to the OpenGL rewrite when this is revisited.
 - **Repo is public** on GitHub under the user's account by explicit choice — never commit `.env` or
   real API keys.
+- **Speaker recognition (Phase 3) uses `resemblyzer`, not a lightweight classical approach** — explicit
+  user choice: offered a lighter MFCC/cosine option with no heavy deps, user chose accuracy instead
+  ("it can be heavy, but it have to be very good, like, very impressive" — this is meant to be a dream
+  project, not a minimal one). Pulls in PyTorch (~200MB+), breaking from the project's earlier
+  lightweight-dependency pattern (faster-whisper uses CTranslate2, not torch) — an intentional
+  exception for this one feature, not a reversal of the free-tier-by-design principle (still $0 cost,
+  just a bigger download). **Windows install gotcha**: resemblyzer's own package metadata declares a
+  dependency on the real `webrtcvad` PyPI package, which ships no prebuilt Windows wheel and fails to
+  build without Microsoft's C++ Build Tools. Fix: `requirements.txt` installs `webrtcvad-wheels` (a
+  prebuilt equivalent, same importable module name) plus resemblyzer's actual runtime deps (torch,
+  librosa, soundfile, numba, scipy) as ordinary lines; resemblyzer itself must be installed separately
+  with `pip install resemblyzer --no-deps` (see README step 6) so pip never resolves its declared
+  `webrtcvad` requirement. Voiceprints live in `data/voiceprints/speakers.json` (gitignored — biometric
+  data, never commit). Deferred HUD polish items (transparent overlay, boot animation, real
+  SPEAKING-state audio reactivity) were moved to GitHub issues #1-#3 instead of tracking here —
+  explicit user request to park design-level work and move to code-level Phase 3.
 
 ## Current status
 
@@ -84,8 +100,16 @@ wake word, small bar docked bottom-center, hides again after each turn — confi
 immediately, ignores the hide/show choreography). Also fixed 2026-09-09: the voice loop was cutting
 users off mid-sentence and mis-firing on natural speech pauses — `MAX_COMMAND_SECONDS` 8→25 and
 `SILENCE_HANG_MS` 1200→2000 in `config.py` (not yet explicitly re-confirmed live by the user, unlike the
-popup). Remaining Phase 2 items: transparent overlay window (deferred, see above), a boot-up animation,
-and real audio-level reactivity during SPEAKING (LISTENING is done).
+popup). Remaining Phase 2 polish items (transparent overlay window, boot-up animation, real
+SPEAKING-state audio reactivity) are parked as GitHub issues #1-#3 — design-level, revisit later.
+
+Phase 3 (speaker recognition, 2026-09-10): every recorded utterance is embedded via `speaker.py`
+(`resemblyzer`, see key decisions above) and matched against `data/voiceprints/speakers.json` by cosine
+similarity (`config.SPEAKER_MATCH_THRESHOLD`, default 0.78). Recognized voices get addressed by their
+enrolled name (`brain.respond(..., speaker_name=...)`); an unrecognized voice triggers
+`main.py`'s `_enroll_new_speaker()` — JARVIS asks "I don't think we've met — what's your name?", the
+reply's audio is embedded too, and both embeddings are averaged into a new voiceprint. Not yet
+confirmed live by the user.
 
 ## Architecture
 
@@ -96,6 +120,7 @@ src/jarvis/
   wake_word.py   openWakeWord model (pretrained "hey_jarvis")
   stt.py         faster-whisper transcription
   brain.py       Groq API call (GPT-OSS 120B) + JARVIS system prompt/personality
+  speaker.py     resemblyzer voice embeddings + voiceprint matching/enrollment (Phase 3)
   tts.py         edge-tts synthesis + playback (markdown/emoji stripped before speaking)
   hud.py         pywebview window hosting hud/index.html + set_state() JS bridge; `python -m
                  src.jarvis.hud` still runs it standalone as a demo-cycle visual test

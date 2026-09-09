@@ -3,7 +3,7 @@
 Progress tracker. ✅ = done, 🟡 = partial/in progress, ⬜ = not started.
 Delete this file once JARVIS is fully built — it's just a temporary progress view.
 
-**Overall: ~38% complete** (Phase 1 done + a turn-taking fix, Phase 2 visual redesigned to a minimal waveform line, wired into the live voice loop, and turned into a Win+H-style popup with a stop command and live mic reactivity — user confirmed live; transparency/boot animation/TTS-audio-reactivity + Phases 3-6 not started)
+**Overall: ~45% complete** (Phase 1 done + a turn-taking fix, Phase 2 visual redesigned to a minimal waveform line, wired into the live voice loop, and turned into a Win+H-style popup with a stop command and live mic reactivity — user confirmed live; transparency/boot animation/TTS-audio-reactivity tracked as GitHub issues #1-#3, revisit later. Phase 3 speaker recognition wired end-to-end, not yet confirmed live. Phases 4-6 not started)
 
 ## Phase 1 — Core loop (terminal only)
 - ✅ Repo scaffolded + pushed to GitHub
@@ -34,17 +34,27 @@ Delete this file once JARVIS is fully built — it's just a temporary progress v
       canned per-state animation; TTS/SPEAKING is still synthetic (see next item)
 - ⬜ Transparent desktop-overlay window — tried pywebview (unsupported on Windows) and Qt
       QWebEngineView (renders opaque gray, not real transparency); deferred, revisit via a native
-      OpenGL rewrite once the visual design itself is finalized (see CLAUDE.md)
-- ⬜ Boot-up sequence animation
+      OpenGL rewrite once the visual design itself is finalized (see CLAUDE.md). Tracked as
+      [GitHub issue #1](https://github.com/BiswasNehaa/JARVIS/issues/1) — design-level, revisit later.
+- ⬜ Boot-up sequence animation — [GitHub issue #2](https://github.com/BiswasNehaa/JARVIS/issues/2)
 - ⬜ Real audio-level reactivity during SPEAKING — `playsound` gives no amplitude hook; would need a
-      different TTS playback path to drive the waveform from actual voice output
+      different TTS playback path to drive the waveform from actual voice output.
+      [GitHub issue #3](https://github.com/BiswasNehaa/JARVIS/issues/3)
 - ✅ Wire HUD into the live voice loop (main.py) — running `python -m src.jarvis.main` now opens the HUD
       and drives it through IDLE → ACTIVATING → LISTENING → PROCESSING → SPEAKING → ERROR live as you talk
       to it, instead of the old headless terminal loop / separate `hud.py` demo cycle
 
 ## Phase 3 — Speaker recognition
-- ⬜ Local voiceprint matching (know it's you)
-- ⬜ New-voice enrollment ("I don't think we've met — what's your name?")
+- ✅ Local voiceprint matching (know it's you) — `speaker.py` uses `resemblyzer` (deep-learning voice
+      embeddings, chosen over a lighter classical MFCC approach for accuracy — user explicitly wants
+      quality over install size: "it can be heavy, but it have to be very good"). Cosine similarity
+      against enrolled voiceprints stored in `data/voiceprints/speakers.json` (gitignored).
+- ✅ New-voice enrollment — unrecognized voice triggers "I don't think we've met — what's your name?",
+      the reply is transcribed for the name and embedded alongside the original utterance to seed the
+      new voiceprint (`main.py`'s `_enroll_new_speaker`)
+- ✅ Identified speaker's name is passed into `brain.respond()` so JARVIS addresses whoever it recognizes
+      by their actual name (falls back to `config.USER_NAME` only if no one is enrolled yet)
+- ⬜ Not yet confirmed live by the user — needs a live test: one enrollment + one recognized-voice turn
 
 ## Phase 4 — Personality tuning
 - ⬜ Dial in charm/flirt/wit balance by ear once we can hear it talk

@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -18,6 +19,9 @@ SILENCE_RMS_THRESHOLD = 300  # int16 amplitude below this counts as "quiet" — 
 WHISPER_MODEL_SIZE = "base.en"
 
 AUDIO_LEVEL_REFERENCE = 3000  # int16 mean-abs amplitude mapped to "full" HUD waveform reactivity — tune by ear
+
+VOICEPRINTS_PATH = Path(os.getenv("VOICEPRINTS_PATH", "data/voiceprints/speakers.json"))
+SPEAKER_MATCH_THRESHOLD = float(os.getenv("SPEAKER_MATCH_THRESHOLD", "0.78"))  # cosine similarity cutoff for "known voice" — tune by ear
 STOP_PHRASES = (  # said mid-command, ends the turn immediately instead of going to the brain
     "stop session",
     "end session",
