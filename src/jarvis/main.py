@@ -3,7 +3,7 @@ import time
 import numpy as np
 import webview
 
-from . import brain, config, hud, stt, tts, wake_word
+from . import brain, config, hud, speaker, stt, tts, wake_word
 from .audio import SAMPLE_RATE, FRAME_SAMPLES, Microphone
 
 ACTIVATING_FLASH_SECONDS = 0.35
@@ -39,6 +39,37 @@ def _record_command(mic: Microphone) -> list[int]:
 def _is_stop_command(text: str) -> bool:
     lowered = text.lower()
     return any(phrase in lowered for phrase in config.STOP_PHRASES)
+
+
+NAME_PREFIXES = ("my name is ", "i'm ", "i am ", "it's ", "this is ", "call me ")
+
+
+def _extract_name(text: str) -> str:
+    lowered = text.strip().lower()
+    for prefix in NAME_PREFIXES:
+        if lowered.startswith(prefix):
+            lowered = lowered[len(prefix):]
+            break
+    name = lowered.strip().rstrip(".!?")
+    return name[:1].upper() + name[1:] if name else "friend"
+
+
+def _enroll_new_speaker(mic: Microphone, first_utterance_samples: list[int]) -> str:
+    tts.speak("I don't think we've met — what's your name?")
+
+    hud.set_state("LISTENING")
+    answer_samples = _record_command(mic)
+    hud.set_audio_level(0)
+
+    answer_text = stt.transcribe(answer_samples)
+    name = _extract_name(answer_text) if answer_text else "friend"
+
+    hud.set_state("PROCESSING")
+    speaker.enroll(name, [speaker.embed(first_utterance_samples), speaker.embed(answer_samples)])
+
+    hud.set_state("SPEAKING")
+    tts.speak(f"Nice to meet you, {name}. I'll remember your voice from now on.")
+    return name
 
 
 def _run_voice_loop() -> None:
@@ -78,8 +109,14 @@ def _run_voice_loop() -> None:
                     hud.hide_window()
                     continue
 
+                speaker_name = speaker.identify(speaker.embed(samples))
+                if speaker_name is None:
+                    speaker_name = _enroll_new_speaker(mic, samples)
+                else:
+                    print(f"(recognized voice: {speaker_name})")
+
                 hud.set_state("PROCESSING")
-                reply = brain.respond(text, history)
+                reply = brain.respond(text, history, speaker_name=speaker_name)
                 print(f"JARVIS: {reply}")
 
                 history.append({"role": "user", "content": text})

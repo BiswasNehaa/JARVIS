@@ -8,3 +8,14 @@ playsound==1.2.2
 python-dotenv
 numpy
 pywebview
+
+# Speaker recognition (Phase 3) — resemblyzer's own dependency list pulls in the real
+# "webrtcvad" package, which has no prebuilt Windows wheel and fails to build without
+# Microsoft's C++ Build Tools. We satisfy its actual runtime deps here (all of which do
+# ship Windows wheels) and install resemblyzer itself with --no-deps — see README setup.
+webrtcvad-wheels
+torch
+librosa
+soundfile
+numba
+scipy
