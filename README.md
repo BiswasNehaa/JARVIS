@@ -52,8 +52,9 @@ polish) is a one-file change — see the commented-out lines in `.env.example`.
 ## Roadmap
 
 - [x] **Phase 1 — Core loop** — wake word → STT → Groq/Llama → TTS, terminal only
-- [ ] **Phase 2 — HUD widget** — small always-on-top popup with a glowing orb (Age of Ultron style),
-      boot-up sequence, listening/thinking/speaking animation states
+- [x] **Phase 2 — HUD widget** — popup window (Win+H-style, hidden until wake word) with a minimal
+      white waveform-line visual, driven live through the listening/thinking/speaking states; boot-up
+      sequence still open (tracked as a GitHub issue)
 - [x] **Phase 3 — Speaker recognition** — local voiceprint matching; greets known voices by name,
       asks new voices to introduce themselves
 - [ ] **Phase 4 — Personality tuning** — dial in the charm/flirt/wit balance by ear
