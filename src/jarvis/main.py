@@ -111,6 +111,7 @@ def _run_voice_loop() -> None:
 
                 speaker_name = speaker.identify(speaker.embed(samples))
                 if speaker_name is None:
+                    print("(voice not recognized — asking for a name)")
                     speaker_name = _enroll_new_speaker(mic, samples)
                 else:
                     print(f"(recognized voice: {speaker_name})")

@@ -1,7 +1,7 @@
 import json
 
 import numpy as np
-from resemblyzer import VoiceEncoder
+from resemblyzer import VoiceEncoder, preprocess_wav
 
 from . import config
 
@@ -18,6 +18,10 @@ def _get_encoder() -> VoiceEncoder:
 def embed(samples: list[int]) -> np.ndarray:
     """Turn a recorded utterance into a 256-dim voice embedding."""
     wav = np.array(samples, dtype=np.float32) / 32768.0
+    # preprocess_wav trims silence and normalizes volume — without it, embeddings drift with
+    # how much trailing silence _record_command happened to capture, causing inconsistent matches
+    # turn to turn for the same speaker.
+    wav = preprocess_wav(wav)
     return _get_encoder().embed_utterance(wav)
 
 
