@@ -2,6 +2,7 @@ import asyncio
 import os
 import re
 import tempfile
+import threading
 
 import edge_tts
 from playsound import playsound
@@ -13,6 +14,7 @@ from . import config
 
 _EMOJI_PATTERN = re.compile("[\U0001F300-\U0001FAFF\U00002600-\U000027BF]+")
 _MARKDOWN_CHARS = re.compile(r"[*_#`]")
+_playback_lock = threading.Lock()  # timers fire on their own thread; keep playback from overlapping
 
 
 def _clean_for_speech(text: str) -> str:
@@ -31,6 +33,7 @@ def speak(text: str) -> None:
     os.close(fd)
     try:
         asyncio.run(_synthesize(_clean_for_speech(text), path))
-        playsound(path)
+        with _playback_lock:
+            playsound(path)
     finally:
         os.remove(path)
