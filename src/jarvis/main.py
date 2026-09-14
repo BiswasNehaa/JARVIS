@@ -43,15 +43,22 @@ def _is_stop_command(text: str) -> bool:
 
 NAME_PREFIXES = ("my name is ", "i'm ", "i am ", "it's ", "this is ", "call me ")
 
+MIN_SPEAKER_UTTERANCE_SECONDS = 1.5  # below this, resemblyzer embeddings are too unstable to trust
+
 
 def _extract_name(text: str) -> str:
+    """Pull a name out of the answer to "what's your name?" — falls back to config.USER_NAME
+    rather than storing a mistranscribed sentence as a permanent voiceprint key."""
     lowered = text.strip().lower()
     for prefix in NAME_PREFIXES:
         if lowered.startswith(prefix):
             lowered = lowered[len(prefix):]
             break
-    name = lowered.strip().rstrip(".!?")
-    return name[:1].upper() + name[1:] if name else "friend"
+    name = lowered.strip().rstrip(".!?").split(",")[0].strip()
+    words = name.split()
+    if not (1 <= len(words) <= 2) or not all(w.isalpha() for w in words):
+        return config.USER_NAME
+    return " ".join(w.capitalize() for w in words)
 
 
 def _enroll_new_speaker(mic: Microphone, first_utterance_samples: list[int]) -> str:
@@ -75,6 +82,8 @@ def _enroll_new_speaker(mic: Microphone, first_utterance_samples: list[int]) -> 
 def _run_voice_loop() -> None:
     model = wake_word.create_model()
     history: list[dict] = []
+    last_speaker_name: str | None = None
+    min_speaker_samples = int(MIN_SPEAKER_UTTERANCE_SECONDS * SAMPLE_RATE)
 
     print('JARVIS is listening. Say "Hey Jarvis" to wake me up. (Close the HUD window to quit)')
     hud.set_state("IDLE")
@@ -109,12 +118,16 @@ def _run_voice_loop() -> None:
                     hud.hide_window()
                     continue
 
-                speaker_name = speaker.identify(speaker.embed(samples))
-                if speaker_name is None:
-                    print("(voice not recognized — asking for a name)")
-                    speaker_name = _enroll_new_speaker(mic, samples)
+                if len(samples) < min_speaker_samples:
+                    speaker_name = last_speaker_name or config.USER_NAME
                 else:
-                    print(f"(recognized voice: {speaker_name})")
+                    speaker_name = speaker.identify(speaker.embed(samples))
+                    if speaker_name is None:
+                        print("(voice not recognized — asking for a name)")
+                        speaker_name = _enroll_new_speaker(mic, samples)
+                    else:
+                        print(f"(recognized voice: {speaker_name})")
+                last_speaker_name = speaker_name
 
                 hud.set_state("PROCESSING")
                 reply = brain.respond(text, history, speaker_name=speaker_name)
