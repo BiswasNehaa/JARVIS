@@ -29,6 +29,14 @@ STOP_PHRASES = (  # said mid-command, ends the turn immediately instead of going
     "stop listening",
 )
 
+ALLOWED_APPS = {  # Phase 5 skills — name JARVIS can call -> Windows executable (resolved via PATH)
+    "notepad": "notepad.exe",
+    "calculator": "calc.exe",
+    "paint": "mspaint.exe",
+    "file explorer": "explorer.exe",
+    "wordpad": "write.exe",
+}
+
 
 def require_keys() -> None:
     if not GROQ_API_KEY:

@@ -1,6 +1,8 @@
+import json
+
 from groq import Groq
 
-from . import config
+from . import config, skills
 
 
 def _system_prompt(user_name: str) -> str:
@@ -45,7 +47,12 @@ sounds like it came from a support ticket.
 or similar — talk like a person, not a brand.
 - React to the specific thing said, not the category of thing. Specific beats clever.
 - Never use markdown (no bullets, headers, asterisks, numbered lists) — this gets spoken aloud by TTS, \
-so it has to read as plain speech, one to two sentences, max."""
+so it has to read as plain speech, one to two sentences, max.
+
+You can actually do a few things, not just talk: check the time or date, open a handful of apps \
+(notepad, calculator, paint, file explorer, wordpad), and set a timer that announces itself out loud \
+when it's done. Use those tools when they fit instead of saying you can't — but don't announce that \
+you're "using a tool," just do it and respond naturally."""
 
 
 _client = None
@@ -58,12 +65,29 @@ def _get_client() -> Groq:
     return _client
 
 
+MAX_TOOL_ROUNDS = 3
+
+
 def respond(user_text: str, history: list[dict], speaker_name: str | None = None) -> str:
     system_prompt = _system_prompt(speaker_name or config.USER_NAME)
     messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": user_text}]
-    response = _get_client().chat.completions.create(
-        model=config.GROQ_MODEL,
-        max_tokens=400,
-        messages=messages,
-    )
-    return response.choices[0].message.content
+    client = _get_client()
+
+    for _ in range(MAX_TOOL_ROUNDS):
+        response = client.chat.completions.create(
+            model=config.GROQ_MODEL,
+            max_tokens=400,
+            messages=messages,
+            tools=skills.SKILL_SCHEMAS,
+        )
+        message = response.choices[0].message
+        if not message.tool_calls:
+            return message.content
+
+        messages.append(message.model_dump(exclude_none=True))
+        for call in message.tool_calls:
+            arguments = json.loads(call.function.arguments or "{}")
+            result = skills.dispatch(call.function.name, arguments)
+            messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
+
+    return message.content or "Lost my train of thought there — try that again?"
