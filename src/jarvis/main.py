@@ -43,12 +43,22 @@ def _is_stop_command(text: str) -> bool:
 
 NAME_PREFIXES = ("my name is ", "i'm ", "i am ", "it's ", "this is ", "call me ")
 
+# Whisper hallucinates short filler words on noise/silence fairly often — without this blocklist,
+# a misheard "Hi"/"Okay"/etc. passes the 1-2-word-alpha check below and gets saved as a real name,
+# splitting one person's voiceprint into several and breaking future recognition.
+NON_NAME_WORDS = {
+    "hi", "hello", "hey", "yo", "okay", "ok", "yes", "yeah", "yep", "no", "nope", "nah",
+    "sure", "um", "uh", "uhh", "umm", "hmm", "what", "huh", "sorry", "thanks", "please",
+    "stop", "bye", "goodbye",
+}
+
 MIN_SPEAKER_UTTERANCE_SECONDS = 1.5  # below this, resemblyzer embeddings are too unstable to trust
 
 
 def _extract_name(text: str) -> str:
     """Pull a name out of the answer to "what's your name?" — falls back to config.USER_NAME
-    rather than storing a mistranscribed sentence as a permanent voiceprint key."""
+    rather than storing a mistranscribed sentence (or a misheard filler word) as a permanent
+    voiceprint key."""
     lowered = text.strip().lower()
     for prefix in NAME_PREFIXES:
         if lowered.startswith(prefix):
@@ -57,6 +67,8 @@ def _extract_name(text: str) -> str:
     name = lowered.strip().rstrip(".!?").split(",")[0].strip()
     words = name.split()
     if not (1 <= len(words) <= 2) or not all(w.isalpha() for w in words):
+        return config.USER_NAME
+    if any(w in NON_NAME_WORDS for w in words):
         return config.USER_NAME
     return " ".join(w.capitalize() for w in words)
 
