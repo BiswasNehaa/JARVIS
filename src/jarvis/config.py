@@ -22,6 +22,7 @@ AUDIO_LEVEL_REFERENCE = 3000  # int16 mean-abs amplitude mapped to "full" HUD wa
 
 VOICEPRINTS_PATH = Path(os.getenv("VOICEPRINTS_PATH", "data/voiceprints/speakers.json"))
 SPEAKER_MATCH_THRESHOLD = float(os.getenv("SPEAKER_MATCH_THRESHOLD", "0.78"))  # cosine similarity cutoff for "known voice" — tune by ear
+SPEAKER_MAX_SAMPLES = 30  # voice samples kept per speaker (oldest dropped first) — more samples, steadier voiceprint
 STOP_PHRASES = (  # said mid-command, ends the turn immediately instead of going to the brain
     "stop session",
     "end session",
