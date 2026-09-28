@@ -55,6 +55,10 @@ Delete this file once JARVIS is fully built — it's just a temporary progress v
 - ✅ Identified speaker's name is passed into `brain.respond()` so JARVIS addresses whoever it recognizes
       by their actual name (falls back to `config.USER_NAME` only if no one is enrolled yet)
 - ⬜ Not yet confirmed live by the user — needs a live test: one enrollment + one recognized-voice turn
+- ✅ Fixed "forgets who I am mid-session" (2026-09-28) — re-enrolling used to overwrite the whole voiceprint
+      with two fresh clips; now each speaker keeps up to 30 samples, confident matches are added over time,
+      a near miss (≥ `SPEAKER_STICKY_THRESHOLD`) from the last speaker stays with them, and every turn logs
+      its score. Needs a live test: 10+ turns, watch the printed scores
 
 ## Phase 4 — Personality tuning
 - ⬜ Dial in charm/flirt/wit balance by ear once we can hear it talk
