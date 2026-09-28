@@ -17,7 +17,13 @@ def _get_model() -> WhisperModel:
     return _model
 
 
-def transcribe(pcm_samples: list[int]) -> str:
+# Whisper normally drops fillers, so "tell me, um..." comes back as a finished "Tell me?". A prompt
+# written with fillers nudges it to keep them, which is what lets main.py tell a pause to think apart
+# from the end of a sentence.
+FILLER_PROMPT = "Umm, let me think, like, hmm... Okay, so, uh, here's what I'm, like, thinking."
+
+
+def transcribe(pcm_samples: list[int], keep_fillers: bool = False) -> str:
     audio = np.array(pcm_samples, dtype=np.int16).astype(np.float32) / 32768.0
     # Greedy decoding (beam_size=1) is roughly 2x faster than the default beam of 5 with no audible
     # accuracy loss on short spoken commands; vad_filter skips silent stretches instead of decoding them.
@@ -27,5 +33,6 @@ def transcribe(pcm_samples: list[int]) -> str:
         beam_size=1,
         vad_filter=True,
         condition_on_previous_text=False,
+        initial_prompt=FILLER_PROMPT if keep_fillers else None,
     )
     return " ".join(segment.text.strip() for segment in segments).strip()
