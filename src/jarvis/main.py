@@ -1,3 +1,4 @@
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -67,6 +68,7 @@ NON_NAME_WORDS = {
 }
 
 MIN_SPEAKER_UTTERANCE_SECONDS = 1.5  # below this, resemblyzer embeddings are too unstable to trust
+SHORT_UTTERANCE_SECONDS = 4.0  # below this, a weak match never triggers "what's your name?" for a known speaker
 
 
 def _extract_name(text: str) -> str:
@@ -153,7 +155,7 @@ def _run_voice_loop() -> None:
     last_speaker_name: str | None = None
     min_speaker_samples = int(MIN_SPEAKER_UTTERANCE_SECONDS * SAMPLE_RATE)
 
-    print('JARVIS is listening. Say "Hey Jarvis" to wake me up. (Close the HUD window to quit)')
+    print('JARVIS is listening. Say "Hey Jarvis", "Hello Jarvis" or "Hi Jarvis" to wake me up. (Close the HUD window to quit)')
     hud.set_state("IDLE")
 
     with Microphone() as mic:
@@ -226,6 +228,14 @@ def _run_voice_loop() -> None:
                             # seem to forget people mid-session.
                             speaker_name = best_name
                             print(f"(near match, assuming still {speaker_name}, {score:.2f})")
+                        elif last_speaker_name and (
+                            follow_up or len(samples) < SHORT_UTTERANCE_SECONDS * SAMPLE_RATE
+                        ):
+                            # Short phrases ("How about you?") and mid-conversation follow-ups give
+                            # shaky embeddings (Neha scored 0.65 on one); asking her name there cost
+                            # 14s and broke the flow. Only a confident match to someone else switches.
+                            speaker_name = last_speaker_name
+                            print(f"(weak match {score:.2f}, staying with {speaker_name} mid-conversation)")
                         else:
                             print(f"(voice not recognized — best {best_name}, {score:.2f} — asking for a name)")
                             t_enroll = time.perf_counter()
@@ -267,6 +277,11 @@ def main() -> None:
     config.require_keys()
     hud.create_window()
     webview.start(_run_voice_loop)
+    # webview.start() returns once the HUD window is closed. Python then starts shutting down, but the
+    # voice loop thread kept going on its own, and its next background task died with "cannot schedule
+    # new futures after shutdown". Closing the window means quit, so actually quit.
+    print("HUD window closed — JARVIS shutting down.")
+    os._exit(0)
 
 
 if __name__ == "__main__":
