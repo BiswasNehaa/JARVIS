@@ -20,12 +20,45 @@ _last_recording: dict = {}  # stop_reason + seconds of the most recent _record_c
 _background = ThreadPoolExecutor(max_workers=2)
 
 
+MAX_SILENCE_HANG_FRAMES = int(config.MAX_SILENCE_HANG_MS / FRAME_MS)
+
+# If the transcript so far ends on one of these, you're probably mid-thought ("I was thinking that...
+# um"), so keep listening through the pause instead of replying.
+UNFINISHED_ENDINGS = {
+    "and", "but", "or", "so", "because", "cause", "the", "a", "an", "to", "of", "with", "for", "in",
+    "on", "at", "about", "if", "that", "which", "when", "what", "like", "then", "my", "your", "um", "uh", "umm", "uhh", "hmm", "maybe", "also", "just", "than",
+}
+
+
+def _sounds_finished(text: str) -> bool:
+    """Whisper punctuates a finished sentence ("...right?") and usually leaves a trailing-off one bare
+    or with a comma/ellipsis — cheap, decent signal for "done talking" vs "pausing to think"."""
+    text = text.strip()
+    if not text:
+        return True  # nothing intelligible, don't hang around waiting for it
+    if text.endswith(("...", "…", ",", "-", "—")) or text[-1] not in ".?!":
+        return False
+    last_word = text.rstrip(".?!").split()[-1].lower().strip("\"'") if text.rstrip(".?!").split() else ""
+    return last_word not in UNFINISHED_ENDINGS
+
+
 def _record_command(mic: Microphone, no_speech_seconds: float | None = None) -> list[int]:
+    """Record until you're done talking.
+
+    A short pause (SILENCE_HANG_MS) only *might* be the end: JARVIS transcribes what it has so far,
+    in the background while still listening, and only stops if that reads like a finished sentence.
+    Otherwise it waits out pauses up to MAX_SILENCE_HANG_MS, so a 2-3s pause to think mid-sentence
+    doesn't get cut off. The check's transcript is kept in _last_recording["text"] so the main loop
+    doesn't transcribe the same audio twice.
+    """
     samples: list[int] = []
     speech_started = False
     silent_frames = 0
     stop_reason = "max length"
     no_speech_frames = NO_SPEECH_FRAMES if no_speech_seconds is None else int(no_speech_seconds * 1000 / FRAME_MS)
+    check = None  # background transcription of everything said before the current pause
+    check_is_current = False  # False once you start talking again after that check was started
+    _last_recording.pop("text", None)
 
     for frame_index in range(MAX_FRAMES):
         frame = mic.read_frame()
@@ -37,15 +70,26 @@ def _record_command(mic: Microphone, no_speech_seconds: float | None = None) -> 
         if _speech.is_speech(frame):
             speech_started = True
             silent_frames = 0
+            check_is_current = False
         elif speech_started:
             silent_frames += 1
-            if silent_frames >= SILENCE_HANG_FRAMES:
-                stop_reason = "silence"
+            if silent_frames >= MAX_SILENCE_HANG_FRAMES:
+                stop_reason = "long pause"
                 break
+            if silent_frames >= SILENCE_HANG_FRAMES:
+                if not check_is_current and (check is None or check.done()):
+                    check = _background.submit(stt.transcribe, list(samples), keep_fillers=True)
+                    check_is_current = True
+                elif check_is_current and check.done() and _sounds_finished(check.result()):
+                    stop_reason = "silence"
+                    break
         elif frame_index >= no_speech_frames:
             stop_reason = "no speech"
             break
 
+    if check_is_current and check is not None:
+        # Audio after the check was all silence, so its transcript covers the whole recording.
+        _last_recording["text"] = check.result()
     _last_recording["stop_reason"] = stop_reason
     _last_recording["seconds"] = len(samples) / SAMPLE_RATE
     return samples
@@ -195,7 +239,9 @@ def _run_voice_loop() -> None:
                     long_enough = len(samples) >= min_speaker_samples
                     embedding_future = _background.submit(speaker.embed, samples) if long_enough else None
                     hud.set_state("PROCESSING")
-                    text = stt.transcribe(samples)
+                    text = _last_recording.get("text")
+                    if text is None:
+                        text = stt.transcribe(samples)
                     t_transcribed = time.perf_counter()
                     if not text:
                         print("(didn't catch that)")
@@ -220,12 +266,14 @@ def _run_voice_loop() -> None:
                             speaker.enroll(speaker_name, [embedding])
                         elif (
                             best_name is not None
-                            and best_name == last_speaker_name
                             and score >= config.SPEAKER_STICKY_THRESHOLD
+                            and (best_name == last_speaker_name or len(samples) < SHORT_UTTERANCE_SECONDS * SAMPLE_RATE)
                         ):
                             # A near miss from whoever was just talking is almost always the same
                             # person on an off turn — re-asking their name here is what made JARVIS
-                            # seem to forget people mid-session.
+                            # seem to forget people mid-session. Same for a near miss on a short
+                            # phrase: Neha's 2s opening "How are you?" scored 0.73 and cost a 14s
+                            # name exchange. New people still get asked once they say something longer.
                             speaker_name = best_name
                             print(f"(near match, assuming still {speaker_name}, {score:.2f})")
                         elif last_speaker_name and (
