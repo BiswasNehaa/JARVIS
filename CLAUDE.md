@@ -20,7 +20,13 @@ the phase roadmap.
   Requires a one-time model download on first setup (see README step 5). Audio capture uses
   `sounddevice` (`src/jarvis/audio.py`) instead of Picovoice's `pvrecorder`.
 - **Personality**: full charm from day one (confident, witty, flirty banter), not a subtle/professional
-  starting point — this was an explicit user choice, not a default.
+  starting point — this was an explicit user choice, not a default. **Reworked 2026-09-28**: user
+  disliked the old version calling her "babe" and getting sassy/dismissive when she vented ("charming
+  and flirty doesn't mean this"). She asked for Tom Cruise-style charm: confident, easygoing, upbeat,
+  earnest, makes you feel like the most interesting person in the room. `brain.py`'s prompt now bans
+  pet names outright, forbids roasting/scolding, and has a "read the room" rule (drop the jokes, be
+  kind and specific when the user is stressed). Channel the vibe, never impersonate or quote him.
+  Not yet confirmed live by the user.
 - **HUD visual concept — replaced 2026-09-09.** The old cyan holographic orbital-arc/filament Three.js
   scene (~10 rounds to converge on, 2026-09-07/08) was scrapped outright: user found it "looking really
   bad." New direction, explicitly requested with a reference image (Arctic Monkeys "Do I Wanna Know?"
