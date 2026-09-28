@@ -115,11 +115,15 @@ SPEAKING-state audio reactivity) are parked as GitHub issues #1-#3 — design-le
 
 Phase 3 (speaker recognition, 2026-09-10): every recorded utterance is embedded via `speaker.py`
 (`resemblyzer`, see key decisions above) and matched against `data/voiceprints/speakers.json` by cosine
-similarity (`config.SPEAKER_MATCH_THRESHOLD`, default 0.78). Recognized voices get addressed by their
+similarity against the centroid of each speaker's stored samples (`config.SPEAKER_MATCH_THRESHOLD`, default
+0.75, set from Neha's live scores of 0.77-0.91 on 2026-09-28). Recognized voices get addressed by their
 enrolled name (`brain.respond(..., speaker_name=...)`); an unrecognized voice triggers
 `main.py`'s `_enroll_new_speaker()` — JARVIS asks "I don't think we've met — what's your name?", the
-reply's audio is embedded too, and both embeddings are averaged into a new voiceprint. Not yet
-confirmed live by the user.
+reply's audio is embedded too (if ≥1.5s), and the samples are ADDED to that speaker's list (up to
+`SPEAKER_MAX_SAMPLES`), never overwriting it — overwriting was why JARVIS "forgot" Neha mid-session.
+Confident matches are also added, so the voiceprint keeps learning; a near miss (≥
+`SPEAKER_STICKY_THRESHOLD`) from the last speaker stays with them. Confirmed live by the user 2026-09-28:
+not asked her name again after the first turn of a session.
 
 ## Architecture
 
