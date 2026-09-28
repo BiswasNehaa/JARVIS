@@ -84,7 +84,12 @@ def _enroll_new_speaker(mic: Microphone, first_utterance_samples: list[int]) -> 
     name = _extract_name(answer_text) if answer_text else "friend"
 
     hud.set_state("PROCESSING")
-    speaker.enroll(name, [speaker.embed(first_utterance_samples), speaker.embed(answer_samples)])
+    # The name answer is often a single word, too short for a trustworthy embedding — only keep it
+    # as a voice sample when it's long enough. The first utterance always is (it had to be, to get here).
+    clips = [first_utterance_samples]
+    if len(answer_samples) >= int(MIN_SPEAKER_UTTERANCE_SECONDS * SAMPLE_RATE):
+        clips.append(answer_samples)
+    speaker.enroll(name, [speaker.embed(clip) for clip in clips])
 
     hud.set_state("SPEAKING")
     tts.speak(f"Nice to meet you, {name}. I'll remember your voice from now on.")
@@ -133,12 +138,27 @@ def _run_voice_loop() -> None:
                 if len(samples) < min_speaker_samples:
                     speaker_name = last_speaker_name or config.USER_NAME
                 else:
-                    speaker_name = speaker.identify(speaker.embed(samples))
-                    if speaker_name is None:
-                        print("(voice not recognized — asking for a name)")
-                        speaker_name = _enroll_new_speaker(mic, samples)
+                    embedding = speaker.embed(samples)
+                    best_name, score = speaker.best_match(embedding)
+                    if best_name is not None and score >= config.SPEAKER_MATCH_THRESHOLD:
+                        speaker_name = best_name
+                        print(f"(recognized voice: {speaker_name}, {score:.2f})")
+                        # Keep learning from confident matches so the voiceprint tracks how you
+                        # actually sound day to day, not just the enrollment clips.
+                        speaker.enroll(speaker_name, [embedding])
+                    elif (
+                        best_name is not None
+                        and best_name == last_speaker_name
+                        and score >= config.SPEAKER_STICKY_THRESHOLD
+                    ):
+                        # A near miss from whoever was just talking is almost always the same
+                        # person on an off turn — re-asking their name here is what made JARVIS
+                        # seem to forget people mid-session.
+                        speaker_name = best_name
+                        print(f"(near match, assuming still {speaker_name}, {score:.2f})")
                     else:
-                        print(f"(recognized voice: {speaker_name})")
+                        print(f"(voice not recognized — best {best_name}, {score:.2f} — asking for a name)")
+                        speaker_name = _enroll_new_speaker(mic, samples)
                 last_speaker_name = speaker_name
 
                 hud.set_state("PROCESSING")
