@@ -4,7 +4,6 @@ onnxruntime
 sounddevice
 faster-whisper
 edge-tts
-playsound==1.2.2
 python-dotenv
 numpy
 pywebview

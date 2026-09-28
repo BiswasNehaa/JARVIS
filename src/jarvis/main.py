@@ -1,5 +1,8 @@
 import os
+import re
+import threading
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -97,7 +100,71 @@ def _record_command(mic: Microphone, no_speech_seconds: float | None = None) -> 
 
 def _is_stop_command(text: str) -> bool:
     lowered = text.lower()
+    if re.sub(r"[^a-z ]", "", lowered).strip() in {"stop", "stop it", "stop talking", "okay stop", "ok stop"}:
+        return True
     return any(phrase in lowered for phrase in config.STOP_PHRASES)
+
+
+BARGE_IN_WINDOW_FRAMES = 20  # ~1.6s of audio per "did she say stop?" check
+BARGE_IN_CHECK_EVERY = 8  # ~0.64s between checks
+def _words(text: str) -> list[str]:
+    return re.findall(r"[a-z']+", text.lower())
+
+
+def _heard_stop(text: str, reply: str) -> bool:
+    """The mic also hears JARVIS's own voice. If the reply itself says "stop" ("I'd rather stop the
+    bad guys"), a "stop" heard with the same word before or after it is JARVIS's echo, not you."""
+    heard, said = _words(text), _words(reply)
+    echo_neighbors = [
+        (said[i - 1] if i > 0 else None, said[i + 1] if i + 1 < len(said) else None)
+        for i, word in enumerate(said) if word == "stop"
+    ]
+    for i, word in enumerate(heard):
+        if word != "stop":
+            continue
+        before = heard[i - 1] if i > 0 else None
+        after = heard[i + 1] if i + 1 < len(heard) else None
+        is_echo = any(
+            (before is not None and before == b) or (after is not None and after == a)
+            for b, a in echo_neighbors
+        )
+        if not is_echo:
+            return True
+    return False
+
+
+def _listen_for_stop(mic: Microphone, model, reply: str, done: threading.Event) -> None:
+    """While JARVIS talks, listen for "stop" (or "Hey Jarvis") and cut the speech off."""
+    window: deque[np.ndarray] = deque(maxlen=BARGE_IN_WINDOW_FRAMES)
+    frames_since_check = 0
+    while not done.is_set():
+        frame = mic.read_frame()
+        window.append(frame)
+        if wake_word.detected(model, frame):
+            tts.interrupt()
+            return
+        frames_since_check += 1
+        if frames_since_check < BARGE_IN_CHECK_EVERY or not any(_speech.is_speech(f) for f in window):
+            continue
+        frames_since_check = 0
+        if _heard_stop(stt.transcribe(np.concatenate(window).tolist()), reply):
+            tts.interrupt()
+            return
+
+
+def _speak_interruptible(mic: Microphone, model, reply: str) -> dict:
+    done = threading.Event()
+    listener = threading.Thread(target=_listen_for_stop, args=(mic, model, reply, done), daemon=True)
+    listener.start()
+    try:
+        timing = tts.speak(reply)
+    finally:
+        done.set()
+        listener.join()
+        wake_word.reset(model)
+    if timing.get("interrupted"):
+        print("(stopped talking — listening)")
+    return timing
 
 
 NAME_PREFIXES = ("my name is ", "i'm ", "i am ", "it's ", "this is ", "call me ")
@@ -298,7 +365,7 @@ def _run_voice_loop() -> None:
                     history[:] = history[-20:]  # keep token cost bounded
 
                     hud.set_state("SPEAKING")
-                    tts_timing = tts.speak(reply)
+                    tts_timing = _speak_interruptible(mic, model, reply)
                     _log_timing(t_start, t_recorded, t_transcribed, t_identified, t_replied, tts_timing, enroll_seconds)
                     keep_listening = True
                 except Exception as exc:  # noqa: BLE001 - keep the loop alive across one bad turn

@@ -6,8 +6,10 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import av  # comes with faster-whisper; decodes edge-tts's mp3 output
 import edge_tts
-from playsound import playsound
+import numpy as np
+import sounddevice as sd
 
 from . import config
 
@@ -57,14 +59,48 @@ def _synthesize_to_file(text: str) -> str:
     return path
 
 
+PLAYBACK_RATE = 24000  # edge-tts's native rate
+PLAYBACK_BLOCK = 1200  # 50ms: how quickly interrupt() takes effect
+
+_interrupt = threading.Event()
+
+
+def interrupt() -> None:
+    """Cut off whatever JARVIS is saying right now (e.g. you said "stop")."""
+    _interrupt.set()
+
+
+def _decode(path: str) -> np.ndarray:
+    with av.open(path) as container:
+        resampler = av.AudioResampler(format="flt", layout="mono", rate=PLAYBACK_RATE)
+        chunks = [
+            out.to_ndarray().reshape(-1)
+            for frame in container.decode(audio=0)
+            for out in resampler.resample(frame)
+        ]
+    return np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.float32)
+
+
+def _play(audio: np.ndarray) -> bool:
+    """Play in small blocks so an interrupt stops it within ~50ms (playsound couldn't be stopped).
+    Returns False if interrupted."""
+    with sd.OutputStream(samplerate=PLAYBACK_RATE, channels=1, dtype="float32") as stream:
+        for start in range(0, len(audio), PLAYBACK_BLOCK):
+            if _interrupt.is_set():
+                return False
+            stream.write(audio[start:start + PLAYBACK_BLOCK].reshape(-1, 1))
+    return True
+
+
 def speak(text: str) -> dict:
     """Speak `text`, starting playback after the first sentence (or opening clause) is synthesized rather than the whole
     reply; the next sentence is synthesized in the background while the current one plays.
 
-    Returns {"first_audio": seconds until playback started} for main.py's timing log."""
+    Returns {"first_audio": seconds until playback started, "interrupted": bool} for main.py."""
     start = time.perf_counter()
     sentences = _split_for_speech(_clean_for_speech(text))
-    timing = {"first_audio": 0.0}
+    timing = {"first_audio": 0.0, "interrupted": False}
+    _interrupt.clear()
     if not sentences:
         return timing
 
@@ -72,13 +108,25 @@ def speak(text: str) -> dict:
         pending = synth.submit(_synthesize_to_file, sentences[0])
         for index in range(len(sentences)):
             path = pending.result()
-            if index + 1 < len(sentences):
+            if index + 1 < len(sentences) and not _interrupt.is_set():
                 pending = synth.submit(_synthesize_to_file, sentences[index + 1])
             try:
+                if _interrupt.is_set():
+                    timing["interrupted"] = True
+                    break
+                audio = _decode(path)
                 with _playback_lock:
                     if index == 0:
                         timing["first_audio"] = time.perf_counter() - start
-                    playsound(path)
+                    if not _play(audio):
+                        timing["interrupted"] = True
+                        break
             finally:
                 os.remove(path)
+    if timing["interrupted"]:
+        # The next sentence may have been synthesized already and never played
+        try:
+            os.remove(pending.result())
+        except (OSError, Exception):  # noqa: BLE001 - already removed, or synthesis failed
+            pass
     return timing
