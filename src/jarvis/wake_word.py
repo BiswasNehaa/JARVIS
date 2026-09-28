@@ -1,8 +1,24 @@
+import re
+from collections import deque
+
 import numpy as np
 from openwakeword.model import Model
 
+from . import stt
+
 WAKE_MODEL_NAME = "hey_jarvis"
 THRESHOLD = 0.5
+
+# "Hello Jarvis" and "Hi Jarvis" usually clear THRESHOLD on their own (the model mostly keys on
+# "Jarvis"), but in testing an Indian-English "Hi Jarvis" peaked at only ~0.38. Scores in this
+# near-miss band get a second opinion from Whisper; unrelated speech scores ~0.00, so this rarely runs.
+NEAR_MISS_THRESHOLD = 0.15
+NEAR_MISS_WAIT_FRAMES = 6  # ~0.5s: let the score finish peaking before falling back to Whisper
+BUFFER_FRAMES = 30  # ~2.4s of audio kept for the Whisper check
+WAKE_PHRASE = re.compile(r"\b(hey|hi|hello|hiya|ok|okay)\b[\s,.!]*(jarvis|jervis|jarvi)\b", re.IGNORECASE)
+
+_recent_frames: deque[np.ndarray] = deque(maxlen=BUFFER_FRAMES)
+_near_miss_frames_left = 0
 
 
 def create_model() -> Model:
@@ -13,13 +29,39 @@ def create_model() -> Model:
     return Model(wakeword_models=[WAKE_MODEL_NAME], inference_framework="onnx")
 
 
+def _whisper_confirms() -> bool:
+    text = stt.transcribe(np.concatenate(list(_recent_frames)).tolist())
+    return bool(WAKE_PHRASE.search(text))
+
+
 def detected(model: Model, frame: np.ndarray) -> bool:
-    scores = model.predict(frame)
-    return scores[WAKE_MODEL_NAME] >= THRESHOLD
+    """True on "Hey Jarvis", "Hello Jarvis" or "Hi Jarvis"."""
+    global _near_miss_frames_left
+    _recent_frames.append(frame)
+    score = model.predict(frame)[WAKE_MODEL_NAME]
+    if score >= THRESHOLD:
+        _near_miss_frames_left = 0
+        return True
+
+    if _near_miss_frames_left == 0:
+        if score >= NEAR_MISS_THRESHOLD:
+            _near_miss_frames_left = NEAR_MISS_WAIT_FRAMES
+        return False
+
+    _near_miss_frames_left -= 1
+    if _near_miss_frames_left > 0:
+        return False
+    if _whisper_confirms():
+        return True
+    _recent_frames.clear()  # don't re-check the same audio
+    return False
 
 
 def reset(model: Model) -> None:
     """Clear the model's rolling audio buffer after a conversation so leftover scores from before
     can't fire a phantom wake-up."""
+    global _near_miss_frames_left
+    _recent_frames.clear()
+    _near_miss_frames_left = 0
     if hasattr(model, "reset"):
         model.reset()
