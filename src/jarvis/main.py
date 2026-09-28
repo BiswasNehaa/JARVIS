@@ -1,38 +1,51 @@
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import webview
 
 from . import brain, config, hud, speaker, stt, tts, wake_word
-from .audio import SAMPLE_RATE, FRAME_SAMPLES, Microphone
+from .audio import SAMPLE_RATE, FRAME_SAMPLES, Microphone, SpeechDetector
 
 ACTIVATING_FLASH_SECONDS = 0.35
 
 FRAME_MS = 1000 * FRAME_SAMPLES / SAMPLE_RATE
 SILENCE_HANG_FRAMES = int(config.SILENCE_HANG_MS / FRAME_MS)
 MAX_FRAMES = int(config.MAX_COMMAND_SECONDS * 1000 / FRAME_MS)
+NO_SPEECH_FRAMES = int(config.NO_SPEECH_TIMEOUT_SECONDS * 1000 / FRAME_MS)
+
+_speech = SpeechDetector(config.VAD_AGGRESSIVENESS, config.SILENCE_RMS_THRESHOLD)
+_last_recording: dict = {}  # stop_reason + seconds of the most recent _record_command, for timing logs
+_background = ThreadPoolExecutor(max_workers=2)
 
 
 def _record_command(mic: Microphone) -> list[int]:
     samples: list[int] = []
     speech_started = False
     silent_frames = 0
+    stop_reason = "max length"
 
-    for _ in range(MAX_FRAMES):
+    for frame_index in range(MAX_FRAMES):
         frame = mic.read_frame()
         samples.extend(frame.tolist())
 
         amplitude = np.abs(frame).mean()
         hud.set_audio_level(min(1.0, amplitude / config.AUDIO_LEVEL_REFERENCE))
 
-        if amplitude >= config.SILENCE_RMS_THRESHOLD:
+        if _speech.is_speech(frame):
             speech_started = True
             silent_frames = 0
         elif speech_started:
             silent_frames += 1
             if silent_frames >= SILENCE_HANG_FRAMES:
+                stop_reason = "silence"
                 break
+        elif frame_index >= NO_SPEECH_FRAMES:
+            stop_reason = "no speech"
+            break
 
+    _last_recording["stop_reason"] = stop_reason
+    _last_recording["seconds"] = len(samples) / SAMPLE_RATE
     return samples
 
 
@@ -96,7 +109,40 @@ def _enroll_new_speaker(mic: Microphone, first_utterance_samples: list[int]) -> 
     return name
 
 
+def _log_timing(t_start, t_recorded, t_transcribed, t_identified=None, t_replied=None, tts_timing=None) -> None:
+    """One line per turn showing where the time went. "wait" is the gap you actually feel: from the
+    moment you stop talking (end of recording) to JARVIS's first word coming out of the speaker."""
+    rec = _last_recording
+    parts = [
+        f"record {t_recorded - t_start:.1f}s (stopped by {rec.get('stop_reason')}, "
+        f"{rec.get('seconds', 0):.1f}s audio, speech threshold {_speech.threshold:.0f})"
+    ]
+    parts.append(f"stt {t_transcribed - t_recorded:.2f}s")
+    if t_identified is not None:
+        parts.append(f"speaker {t_identified - t_transcribed:.2f}s")
+    if t_replied is not None:
+        parts.append(f"brain {t_replied - t_identified:.2f}s")
+    if tts_timing is not None:
+        parts.append(f"tts first audio {tts_timing['first_audio']:.2f}s")
+        wait = (t_replied - t_recorded) + tts_timing["first_audio"]
+        parts.append(f"WAIT {wait:.1f}s")
+    print("[timing] " + " | ".join(parts))
+
+
+def _warm_up() -> None:
+    """Load Whisper and the voice encoder now, at startup, instead of on the first "Hey Jarvis" —
+    otherwise the first reply pays several seconds of model loading."""
+    t = time.perf_counter()
+    stt.transcribe([0] * SAMPLE_RATE)
+    speaker.embed((np.random.default_rng(0).normal(0, 2000, SAMPLE_RATE * 2)).astype(np.int16).tolist())
+    brain.warm_up()
+    print(f"[timing] models warmed up in {time.perf_counter() - t:.1f}s")
+
+
 def _run_voice_loop() -> None:
+    _background.submit(_warm_up).add_done_callback(
+        lambda f: f.exception() and print(f"(warm-up failed, first reply will be slower: {f.exception()})")
+    )
     model = wake_word.create_model()
     history: list[dict] = []
     last_speaker_name: str | None = None
@@ -109,6 +155,7 @@ def _run_voice_loop() -> None:
         while True:
             frame = mic.read_frame()
             if not wake_word.detected(model, frame):
+                _speech.observe_background(frame)
                 continue
 
             print("Wake word detected — listening...")
@@ -118,12 +165,21 @@ def _run_voice_loop() -> None:
             hud.set_state("LISTENING")
 
             try:
+                t_start = time.perf_counter()
                 samples = _record_command(mic)
                 hud.set_audio_level(0)
+                t_recorded = time.perf_counter()
 
+                # Transcription and the voiceprint embedding are independent, so run them side by
+                # side instead of one after the other (both release the GIL while they crunch).
+                long_enough = len(samples) >= min_speaker_samples
+                embedding_future = _background.submit(speaker.embed, samples) if long_enough else None
+                hud.set_state("PROCESSING")
                 text = stt.transcribe(samples)
+                t_transcribed = time.perf_counter()
                 if not text:
                     print("(didn't catch that)")
+                    _log_timing(t_start, t_recorded, t_transcribed)
                     hud.set_state("IDLE")
                     hud.hide_window()
                     continue
@@ -135,10 +191,10 @@ def _run_voice_loop() -> None:
                     hud.hide_window()
                     continue
 
-                if len(samples) < min_speaker_samples:
+                if embedding_future is None:
                     speaker_name = last_speaker_name or config.USER_NAME
                 else:
-                    embedding = speaker.embed(samples)
+                    embedding = embedding_future.result()
                     best_name, score = speaker.best_match(embedding)
                     if best_name is not None and score >= config.SPEAKER_MATCH_THRESHOLD:
                         speaker_name = best_name
@@ -160,9 +216,11 @@ def _run_voice_loop() -> None:
                         print(f"(voice not recognized — best {best_name}, {score:.2f} — asking for a name)")
                         speaker_name = _enroll_new_speaker(mic, samples)
                 last_speaker_name = speaker_name
+                t_identified = time.perf_counter()
 
                 hud.set_state("PROCESSING")
                 reply = brain.respond(text, history, speaker_name=speaker_name)
+                t_replied = time.perf_counter()
                 print(f"JARVIS: {reply}")
 
                 history.append({"role": "user", "content": text})
@@ -170,7 +228,8 @@ def _run_voice_loop() -> None:
                 history[:] = history[-20:]  # keep token cost bounded
 
                 hud.set_state("SPEAKING")
-                tts.speak(reply)
+                tts_timing = tts.speak(reply)
+                _log_timing(t_start, t_recorded, t_transcribed, t_identified, t_replied, tts_timing)
             except Exception as exc:  # noqa: BLE001 - keep the loop alive across one bad turn
                 print(f"(error handling that: {exc})")
                 hud.set_state("ERROR")

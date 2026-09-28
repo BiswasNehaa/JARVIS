@@ -8,15 +8,20 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low")  # gpt-oss only: low | medium | high — low is much faster
 USER_NAME = os.getenv("USER_NAME", "Neha")
 TTS_VOICE = os.getenv("TTS_VOICE", "en-CA-LiamNeural")
 TTS_RATE = os.getenv("TTS_RATE", "+0%")  # e.g. "+8%" for a faster, less flat pace
 TTS_PITCH = os.getenv("TTS_PITCH", "+0Hz")  # e.g. "+15Hz" for a warmer, less monotone pitch
 
-MAX_COMMAND_SECONDS = 25  # hard cap, in case you never go quiet
-SILENCE_HANG_MS = 2000  # stop recording after this much quiet, once you've started speaking
-SILENCE_RMS_THRESHOLD = 300  # int16 amplitude below this counts as "quiet" — tune if it cuts you off early
-WHISPER_MODEL_SIZE = "base.en"
+MAX_COMMAND_SECONDS = 15  # hard cap, in case you never go quiet
+NO_SPEECH_TIMEOUT_SECONDS = 6  # give up if you never start talking after the wake word
+SILENCE_HANG_MS = int(os.getenv("SILENCE_HANG_MS", "1200"))  # stop recording after this much quiet, once you've started speaking
+SILENCE_RMS_THRESHOLD = 300  # minimum int16 amplitude for speech; raised automatically in noisy rooms (audio.SpeechDetector)
+# webrtcvad (installed via webrtcvad-wheels) must also hear a voice, so steady fan/hum noise can't
+# keep a recording open until MAX_COMMAND_SECONDS. 0-3, higher = stricter.
+VAD_AGGRESSIVENESS = int(os.getenv("VAD_AGGRESSIVENESS", "2"))
+WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base.en")
 
 AUDIO_LEVEL_REFERENCE = 3000  # int16 mean-abs amplitude mapped to "full" HUD waveform reactivity — tune by ear
 

@@ -68,6 +68,19 @@ def _get_client() -> Groq:
 MAX_TOOL_ROUNDS = 3
 
 
+def warm_up() -> None:
+    """Create the HTTP client up front so the first request doesn't also pay for setup."""
+    _get_client()
+
+
+def _speed_options() -> dict:
+    # gpt-oss is a reasoning model: by default it "thinks" at medium effort before answering, which
+    # is pure waiting time for one-line spoken replies. Low effort keeps the personality, drops the lag.
+    if "gpt-oss" in config.GROQ_MODEL:
+        return {"extra_body": {"reasoning_effort": config.REASONING_EFFORT}}
+    return {}
+
+
 def respond(user_text: str, history: list[dict], speaker_name: str | None = None) -> str:
     system_prompt = _system_prompt(speaker_name or config.USER_NAME)
     messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": user_text}]
@@ -79,6 +92,7 @@ def respond(user_text: str, history: list[dict], speaker_name: str | None = None
             max_tokens=400,
             messages=messages,
             tools=skills.SKILL_SCHEMAS,
+            **_speed_options(),
         )
         message = response.choices[0].message
         if not message.tool_calls:
