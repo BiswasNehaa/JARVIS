@@ -19,11 +19,12 @@ _last_recording: dict = {}  # stop_reason + seconds of the most recent _record_c
 _background = ThreadPoolExecutor(max_workers=2)
 
 
-def _record_command(mic: Microphone) -> list[int]:
+def _record_command(mic: Microphone, no_speech_seconds: float | None = None) -> list[int]:
     samples: list[int] = []
     speech_started = False
     silent_frames = 0
     stop_reason = "max length"
+    no_speech_frames = NO_SPEECH_FRAMES if no_speech_seconds is None else int(no_speech_seconds * 1000 / FRAME_MS)
 
     for frame_index in range(MAX_FRAMES):
         frame = mic.read_frame()
@@ -40,7 +41,7 @@ def _record_command(mic: Microphone) -> list[int]:
             if silent_frames >= SILENCE_HANG_FRAMES:
                 stop_reason = "silence"
                 break
-        elif frame_index >= NO_SPEECH_FRAMES:
+        elif frame_index >= no_speech_frames:
             stop_reason = "no speech"
             break
 
@@ -166,84 +167,100 @@ def _run_voice_loop() -> None:
             hud.show_window()
             hud.set_state("ACTIVATING")
             time.sleep(ACTIVATING_FLASH_SECONDS)
-            hud.set_state("LISTENING")
 
-            try:
-                t_start = time.perf_counter()
-                enroll_seconds = 0.0  # the "what's your name?" exchange is a conversation, not lag
-                samples = _record_command(mic)
-                hud.set_audio_level(0)
-                t_recorded = time.perf_counter()
+            # Conversation mode: after JARVIS answers, keep listening for a follow-up without
+            # needing "Hey Jarvis" again. Goes back to sleep after FOLLOW_UP_SECONDS of silence,
+            # a stop phrase, or an error.
+            follow_up = False
+            while True:
+                keep_listening = False
+                hud.set_state("LISTENING")
+                if follow_up:
+                    mic.drain()  # drop JARVIS's own voice, captured by the mic while it was speaking
+                    print("(listening for a follow-up...)")
+                try:
+                    t_start = time.perf_counter()
+                    enroll_seconds = 0.0  # the "what's your name?" exchange is a conversation, not lag
+                    samples = _record_command(mic, no_speech_seconds=config.FOLLOW_UP_SECONDS if follow_up else None)
+                    hud.set_audio_level(0)
+                    t_recorded = time.perf_counter()
+                    if follow_up and _last_recording["stop_reason"] == "no speech":
+                        print("(no follow-up — say \"Hey Jarvis\" to wake me again)")
+                        break
 
-                # Transcription and the voiceprint embedding are independent, so run them side by
-                # side instead of one after the other (both release the GIL while they crunch).
-                long_enough = len(samples) >= min_speaker_samples
-                embedding_future = _background.submit(speaker.embed, samples) if long_enough else None
-                hud.set_state("PROCESSING")
-                text = stt.transcribe(samples)
-                t_transcribed = time.perf_counter()
-                if not text:
-                    print("(didn't catch that)")
-                    _log_timing(t_start, t_recorded, t_transcribed)
-                    hud.set_state("IDLE")
-                    hud.hide_window()
-                    continue
-                print(f"You: {text}")
+                    # Transcription and the voiceprint embedding are independent, so run them side by
+                    # side instead of one after the other (both release the GIL while they crunch).
+                    long_enough = len(samples) >= min_speaker_samples
+                    embedding_future = _background.submit(speaker.embed, samples) if long_enough else None
+                    hud.set_state("PROCESSING")
+                    text = stt.transcribe(samples)
+                    t_transcribed = time.perf_counter()
+                    if not text:
+                        print("(didn't catch that)")
+                        _log_timing(t_start, t_recorded, t_transcribed)
+                        break
+                    print(f"You: {text}")
 
-                if _is_stop_command(text):
-                    print("(session stopped)")
-                    hud.set_state("IDLE")
-                    hud.hide_window()
-                    continue
+                    if _is_stop_command(text):
+                        print("(session stopped)")
+                        break
 
-                if embedding_future is None:
-                    speaker_name = last_speaker_name or config.USER_NAME
-                else:
-                    embedding = embedding_future.result()
-                    best_name, score = speaker.best_match(embedding)
-                    if best_name is not None and score >= config.SPEAKER_MATCH_THRESHOLD:
-                        speaker_name = best_name
-                        print(f"(recognized voice: {speaker_name}, {score:.2f})")
-                        # Keep learning from confident matches so the voiceprint tracks how you
-                        # actually sound day to day, not just the enrollment clips.
-                        speaker.enroll(speaker_name, [embedding])
-                    elif (
-                        best_name is not None
-                        and best_name == last_speaker_name
-                        and score >= config.SPEAKER_STICKY_THRESHOLD
-                    ):
-                        # A near miss from whoever was just talking is almost always the same
-                        # person on an off turn — re-asking their name here is what made JARVIS
-                        # seem to forget people mid-session.
-                        speaker_name = best_name
-                        print(f"(near match, assuming still {speaker_name}, {score:.2f})")
+                    if embedding_future is None:
+                        speaker_name = last_speaker_name or config.USER_NAME
                     else:
-                        print(f"(voice not recognized — best {best_name}, {score:.2f} — asking for a name)")
-                        t_enroll = time.perf_counter()
-                        speaker_name = _enroll_new_speaker(mic, samples)
-                        enroll_seconds = time.perf_counter() - t_enroll
-                last_speaker_name = speaker_name
-                t_identified = time.perf_counter()
+                        embedding = embedding_future.result()
+                        best_name, score = speaker.best_match(embedding)
+                        if best_name is not None and score >= config.SPEAKER_MATCH_THRESHOLD:
+                            speaker_name = best_name
+                            print(f"(recognized voice: {speaker_name}, {score:.2f})")
+                            # Keep learning from confident matches so the voiceprint tracks how you
+                            # actually sound day to day, not just the enrollment clips.
+                            speaker.enroll(speaker_name, [embedding])
+                        elif (
+                            best_name is not None
+                            and best_name == last_speaker_name
+                            and score >= config.SPEAKER_STICKY_THRESHOLD
+                        ):
+                            # A near miss from whoever was just talking is almost always the same
+                            # person on an off turn — re-asking their name here is what made JARVIS
+                            # seem to forget people mid-session.
+                            speaker_name = best_name
+                            print(f"(near match, assuming still {speaker_name}, {score:.2f})")
+                        else:
+                            print(f"(voice not recognized — best {best_name}, {score:.2f} — asking for a name)")
+                            t_enroll = time.perf_counter()
+                            speaker_name = _enroll_new_speaker(mic, samples)
+                            enroll_seconds = time.perf_counter() - t_enroll
+                    last_speaker_name = speaker_name
+                    t_identified = time.perf_counter()
 
-                hud.set_state("PROCESSING")
-                reply = brain.respond(text, history, speaker_name=speaker_name)
-                t_replied = time.perf_counter()
-                print(f"JARVIS: {reply}")
+                    hud.set_state("PROCESSING")
+                    reply = brain.respond(text, history, speaker_name=speaker_name)
+                    t_replied = time.perf_counter()
+                    print(f"JARVIS: {reply}")
 
-                history.append({"role": "user", "content": text})
-                history.append({"role": "assistant", "content": reply})
-                history[:] = history[-20:]  # keep token cost bounded
+                    history.append({"role": "user", "content": text})
+                    history.append({"role": "assistant", "content": reply})
+                    history[:] = history[-20:]  # keep token cost bounded
 
-                hud.set_state("SPEAKING")
-                tts_timing = tts.speak(reply)
-                _log_timing(t_start, t_recorded, t_transcribed, t_identified, t_replied, tts_timing, enroll_seconds)
-            except Exception as exc:  # noqa: BLE001 - keep the loop alive across one bad turn
-                print(f"(error handling that: {exc})")
-                hud.set_state("ERROR")
-                time.sleep(1.0)
+                    hud.set_state("SPEAKING")
+                    tts_timing = tts.speak(reply)
+                    _log_timing(t_start, t_recorded, t_transcribed, t_identified, t_replied, tts_timing, enroll_seconds)
+                    keep_listening = True
+                except Exception as exc:  # noqa: BLE001 - keep the loop alive across one bad turn
+                    print(f"(error handling that: {exc})")
+                    hud.set_state("ERROR")
+                    time.sleep(1.0)
+                    break
+
+                if not keep_listening:
+                    break
+                follow_up = True
 
             hud.set_state("IDLE")
             hud.hide_window()
+            mic.drain()
+            wake_word.reset(model)
 
 
 def main() -> None:

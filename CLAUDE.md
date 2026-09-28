@@ -95,7 +95,11 @@ the phase roadmap.
   Whisper decoding, STT and speaker embedding run in parallel, gpt-oss `reasoning_effort=low`
   (`REASONING_EFFORT` env), TTS plays sentence 1 while synthesizing sentence 2, and HUD audio-level
   updates no longer block the recording loop. Each turn prints a `[timing]` line; `WAIT` is end of
-  speech to first spoken word. Not yet confirmed live by the user.
+  speech to first spoken word. Confirmed live 2026-09-28: WAIT ~3-5s (was 30-40s).
+- **Conversation mode — 2026-09-28**: after answering, JARVIS keeps listening for a follow-up for
+  `FOLLOW_UP_SECONDS` (default 8, env overridable, 0 disables) without the wake word; silence, a stop
+  phrase or an error ends the conversation. `Microphone.drain()` discards audio buffered while JARVIS
+  spoke (otherwise it hears its own reply), and the wake-word model is reset after each conversation.
 
 ## Current status
 
