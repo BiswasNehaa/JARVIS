@@ -109,7 +109,9 @@ def _enroll_new_speaker(mic: Microphone, first_utterance_samples: list[int]) -> 
     return name
 
 
-def _log_timing(t_start, t_recorded, t_transcribed, t_identified=None, t_replied=None, tts_timing=None) -> None:
+def _log_timing(
+    t_start, t_recorded, t_transcribed, t_identified=None, t_replied=None, tts_timing=None, enroll_seconds=0.0
+) -> None:
     """One line per turn showing where the time went. "wait" is the gap you actually feel: from the
     moment you stop talking (end of recording) to JARVIS's first word coming out of the speaker."""
     rec = _last_recording
@@ -119,12 +121,14 @@ def _log_timing(t_start, t_recorded, t_transcribed, t_identified=None, t_replied
     ]
     parts.append(f"stt {t_transcribed - t_recorded:.2f}s")
     if t_identified is not None:
-        parts.append(f"speaker {t_identified - t_transcribed:.2f}s")
+        parts.append(f"speaker {t_identified - t_transcribed - enroll_seconds:.2f}s")
+        if enroll_seconds:
+            parts.append(f"name enrollment {enroll_seconds:.1f}s (not counted in WAIT)")
     if t_replied is not None:
         parts.append(f"brain {t_replied - t_identified:.2f}s")
     if tts_timing is not None:
         parts.append(f"tts first audio {tts_timing['first_audio']:.2f}s")
-        wait = (t_replied - t_recorded) + tts_timing["first_audio"]
+        wait = (t_replied - t_recorded) - enroll_seconds + tts_timing["first_audio"]
         parts.append(f"WAIT {wait:.1f}s")
     print("[timing] " + " | ".join(parts))
 
@@ -166,6 +170,7 @@ def _run_voice_loop() -> None:
 
             try:
                 t_start = time.perf_counter()
+                enroll_seconds = 0.0  # the "what's your name?" exchange is a conversation, not lag
                 samples = _record_command(mic)
                 hud.set_audio_level(0)
                 t_recorded = time.perf_counter()
@@ -214,7 +219,9 @@ def _run_voice_loop() -> None:
                         print(f"(near match, assuming still {speaker_name}, {score:.2f})")
                     else:
                         print(f"(voice not recognized — best {best_name}, {score:.2f} — asking for a name)")
+                        t_enroll = time.perf_counter()
                         speaker_name = _enroll_new_speaker(mic, samples)
+                        enroll_seconds = time.perf_counter() - t_enroll
                 last_speaker_name = speaker_name
                 t_identified = time.perf_counter()
 
@@ -229,7 +236,7 @@ def _run_voice_loop() -> None:
 
                 hud.set_state("SPEAKING")
                 tts_timing = tts.speak(reply)
-                _log_timing(t_start, t_recorded, t_transcribed, t_identified, t_replied, tts_timing)
+                _log_timing(t_start, t_recorded, t_transcribed, t_identified, t_replied, tts_timing, enroll_seconds)
             except Exception as exc:  # noqa: BLE001 - keep the loop alive across one bad turn
                 print(f"(error handling that: {exc})")
                 hud.set_state("ERROR")
