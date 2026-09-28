@@ -264,16 +264,12 @@ def _run_voice_loop() -> None:
                             # Keep learning from confident matches so the voiceprint tracks how you
                             # actually sound day to day, not just the enrollment clips.
                             speaker.enroll(speaker_name, [embedding])
-                        elif (
-                            best_name is not None
-                            and score >= config.SPEAKER_STICKY_THRESHOLD
-                            and (best_name == last_speaker_name or len(samples) < SHORT_UTTERANCE_SECONDS * SAMPLE_RATE)
-                        ):
-                            # A near miss from whoever was just talking is almost always the same
-                            # person on an off turn — re-asking their name here is what made JARVIS
-                            # seem to forget people mid-session. Same for a near miss on a short
-                            # phrase: Neha's 2s opening "How are you?" scored 0.73 and cost a 14s
-                            # name exchange. New people still get asked once they say something longer.
+                        elif best_name is not None and score >= config.SPEAKER_STICKY_THRESHOLD:
+                            # A near miss is almost always the enrolled person on an off turn: Neha's
+                            # own saved samples score as low as 0.69 against her voiceprint, while
+                            # other voices tested (2026-09-28) topped out at 0.67. Asking her name here
+                            # is what made JARVIS "forget" her on the first turn of every run.
+                            # Near misses aren't learned from, so they can't drag the voiceprint off.
                             speaker_name = best_name
                             print(f"(near match, assuming still {speaker_name}, {score:.2f})")
                         elif last_speaker_name and (
