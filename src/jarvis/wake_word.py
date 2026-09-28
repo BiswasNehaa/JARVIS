@@ -16,3 +16,10 @@ def create_model() -> Model:
 def detected(model: Model, frame: np.ndarray) -> bool:
     scores = model.predict(frame)
     return scores[WAKE_MODEL_NAME] >= THRESHOLD
+
+
+def reset(model: Model) -> None:
+    """Clear the model's rolling audio buffer after a conversation so leftover scores from before
+    can't fire a phantom wake-up."""
+    if hasattr(model, "reset"):
+        model.reset()

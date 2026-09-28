@@ -21,6 +21,13 @@ class Microphone:
         self._stream.stop()
         self._stream.close()
 
+    def drain(self) -> None:
+        """Throw away audio that piled up while nobody was reading (e.g. JARVIS talking), so the
+        next read is live — otherwise JARVIS hears its own reply as your next command."""
+        available = self._stream.read_available
+        if available > 0:
+            self._stream.read(available)
+
     def read_frame(self) -> np.ndarray:
         data, _ = self._stream.read(FRAME_SAMPLES)
         return np.frombuffer(data, dtype=np.int16)

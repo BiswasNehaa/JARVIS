@@ -16,6 +16,9 @@ TTS_PITCH = os.getenv("TTS_PITCH", "+0Hz")  # e.g. "+15Hz" for a warmer, less mo
 
 MAX_COMMAND_SECONDS = 15  # hard cap, in case you never go quiet
 NO_SPEECH_TIMEOUT_SECONDS = 6  # give up if you never start talking after the wake word
+# After JARVIS answers it keeps listening this long for a follow-up, no "Hey Jarvis" needed;
+# silence for this long ends the conversation. Set to 0 to require the wake word every time.
+FOLLOW_UP_SECONDS = float(os.getenv("FOLLOW_UP_SECONDS", "8"))
 SILENCE_HANG_MS = int(os.getenv("SILENCE_HANG_MS", "1200"))  # stop recording after this much quiet, once you've started speaking
 SILENCE_RMS_THRESHOLD = 300  # minimum int16 amplitude for speech; raised automatically in noisy rooms (audio.SpeechDetector)
 # webrtcvad (installed via webrtcvad-wheels) must also hear a voice, so steady fan/hum noise can't
