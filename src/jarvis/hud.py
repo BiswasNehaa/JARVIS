@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 
 import webview
@@ -53,10 +54,34 @@ def set_state(state: str) -> None:
         _window.evaluate_js(f"setState('{state}')")
 
 
+_pending_level: float | None = None
+_level_ready = threading.Event()
+
+
+def _level_sender() -> None:
+    global _pending_level
+    while True:
+        _level_ready.wait()
+        _level_ready.clear()
+        level, _pending_level = _pending_level, None
+        if level is not None and _window is not None:
+            try:
+                _window.evaluate_js(f"setAudioLevel({level})")
+            except Exception:  # noqa: BLE001 - a dropped waveform update is harmless
+                pass
+
+
+threading.Thread(target=_level_sender, daemon=True).start()
+
+
 def set_audio_level(level: float) -> None:
-    """level: 0.0-1.0, how much the waveform should react to live audio right now."""
-    if _window is not None:
-        _window.evaluate_js(f"setAudioLevel({level})")
+    """level: 0.0-1.0, how much the waveform should react to live audio right now.
+
+    Non-blocking: evaluate_js waits on the GUI thread, and calling it inline every 80ms mic frame
+    made recording fall behind real time. Only the newest level is sent; stale ones are dropped."""
+    global _pending_level
+    _pending_level = level
+    _level_ready.set()
 
 
 def _demo_cycle() -> None:

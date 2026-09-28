@@ -81,6 +81,16 @@ the phase roadmap.
   SPEAKING-state audio reactivity) were moved to GitHub issues #1-#3 instead of tracking here —
   explicit user request to park design-level work and move to code-level Phase 3.
 
+- **Latency pass — 2026-09-28** (user reported 30-40s per reply). Main suspect: the fixed
+  `SILENCE_RMS_THRESHOLD=300` sat below room/fan noise, so recordings rarely detected silence and ran
+  to the 25s cap. Now `audio.SpeechDetector` learns the room's noise floor from idle frames and also
+  requires webrtcvad to hear a voice; `MAX_COMMAND_SECONDS` 25→15, `SILENCE_HANG_MS` 2000→1200 (env
+  overridable), plus a 6s no-speech timeout. Also: Whisper/voice encoder warm up at startup, greedy
+  Whisper decoding, STT and speaker embedding run in parallel, gpt-oss `reasoning_effort=low`
+  (`REASONING_EFFORT` env), TTS plays sentence 1 while synthesizing sentence 2, and HUD audio-level
+  updates no longer block the recording loop. Each turn prints a `[timing]` line; `WAIT` is end of
+  speech to first spoken word. Not yet confirmed live by the user.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by
