@@ -31,6 +31,23 @@ async def _synthesize(text: str, path: str) -> None:
 
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+_CLAUSE_BREAK = re.compile(r"(?<=[,;:\u2014])\s*|\s+(?=\u2014)")
+FIRST_CHUNK_MAX_CHARS = 80  # synthesis time grows with length, so keep the very first chunk short
+FIRST_CHUNK_MIN_CHARS = 15
+
+
+def _split_for_speech(text: str) -> list[str]:
+    """Sentences, with a long opening sentence split at its first natural pause (comma, dash,
+    semicolon) so playback can start on a short clause while the rest synthesizes."""
+    chunks = [s.strip() for s in _SENTENCE_SPLIT.split(text) if s.strip()]
+    if chunks and len(chunks[0]) > FIRST_CHUNK_MAX_CHARS:
+        for match in _CLAUSE_BREAK.finditer(chunks[0]):
+            if FIRST_CHUNK_MIN_CHARS <= match.start() <= FIRST_CHUNK_MAX_CHARS:
+                head, tail = chunks[0][:match.start()].strip(), chunks[0][match.end():].strip()
+                if tail:
+                    chunks[0:1] = [head, tail]
+                break
+    return chunks
 
 
 def _synthesize_to_file(text: str) -> str:
@@ -41,12 +58,12 @@ def _synthesize_to_file(text: str) -> str:
 
 
 def speak(text: str) -> dict:
-    """Speak `text`, starting playback after the first sentence is synthesized rather than the whole
+    """Speak `text`, starting playback after the first sentence (or opening clause) is synthesized rather than the whole
     reply; the next sentence is synthesized in the background while the current one plays.
 
     Returns {"first_audio": seconds until playback started} for main.py's timing log."""
     start = time.perf_counter()
-    sentences = [s for s in _SENTENCE_SPLIT.split(_clean_for_speech(text)) if s.strip()]
+    sentences = _split_for_speech(_clean_for_speech(text))
     timing = {"first_audio": 0.0}
     if not sentences:
         return timing
