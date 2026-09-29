@@ -124,6 +124,7 @@ def respond(user_text: str, history: list[dict], speaker_name: str | None = None
         response = client.chat.completions.create(
             model=config.GROQ_MODEL,
             max_tokens=400,
+            temperature=config.TEMPERATURE,
             messages=messages,
             tools=skills.SKILL_SCHEMAS,
             **_speed_options(),
