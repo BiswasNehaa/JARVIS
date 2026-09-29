@@ -110,6 +110,13 @@ the phase roadmap.
   "and/so/the/um/..."). Otherwise it waits through pauses up to `MAX_SILENCE_HANG_MS` (3.5s). That
   transcript is reused, so there's no second STT pass. Not yet confirmed live.
 
+- **Answer-first replies — 2026-09-30** (user: asked for a movie, JARVIS talked about the mystery genre
+  and she had to ask twice). `brain.py`'s prompt now opens with an answer-first rule (name a real
+  title/name/dish, make a pick instead of asking what she's in the mood for) and bans blurb phrasing
+  ("perfect for", "keeps you guessing", "Enjoy!", adjective lists). `TEMPERATURE` 0.4 (Groq default
+  1.0; 0.6 once invented a movie title). History keeps the last `HISTORY_TURNS`=6 exchanges and is
+  cleared when woken after `HISTORY_RESET_SECONDS`=600 of quiet. Not yet confirmed live.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by
