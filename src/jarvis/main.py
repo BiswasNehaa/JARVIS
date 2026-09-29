@@ -263,6 +263,7 @@ def _run_voice_loop() -> None:
     )
     model = wake_word.create_model()
     history: list[dict] = []
+    last_turn_at = 0.0
     last_speaker_name: str | None = None
     min_speaker_samples = int(MIN_SPEAKER_UTTERANCE_SECONDS * SAMPLE_RATE)
 
@@ -277,6 +278,10 @@ def _run_voice_loop() -> None:
                 continue
 
             print("Wake word detected — listening...")
+            # A new chat after a long gap starts fresh: old topics left in the history can pull
+            # answers toward what was said earlier instead of what was just asked.
+            if history and time.monotonic() - last_turn_at > config.HISTORY_RESET_SECONDS:
+                history.clear()
             hud.show_window()
             hud.set_state("ACTIVATING")
             time.sleep(ACTIVATING_FLASH_SECONDS)
@@ -362,7 +367,8 @@ def _run_voice_loop() -> None:
 
                     history.append({"role": "user", "content": text})
                     history.append({"role": "assistant", "content": reply})
-                    history[:] = history[-20:]  # keep token cost bounded
+                    history[:] = history[-2 * config.HISTORY_TURNS:]  # recent context only, stays on topic
+                    last_turn_at = time.monotonic()
 
                     hud.set_state("SPEAKING")
                     tts_timing = _speak_interruptible(mic, model, reply)

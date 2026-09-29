@@ -9,6 +9,10 @@ load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.4"))  # Groq defaults to 1.0: vaguer answers, even made-up titles
+# How much conversation JARVIS remembers: the last HISTORY_TURNS exchanges, forgotten entirely when
+# you wake it again after HISTORY_RESET_SECONDS of quiet. Long histories dilute the current question.
+HISTORY_TURNS = int(os.getenv("HISTORY_TURNS", "6"))
+HISTORY_RESET_SECONDS = float(os.getenv("HISTORY_RESET_SECONDS", "600"))
 REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low")  # gpt-oss only: low | medium | high — low is much faster
 USER_NAME = os.getenv("USER_NAME", "Neha")
 TTS_VOICE = os.getenv("TTS_VOICE", "en-CA-LiamNeural")
