@@ -8,6 +8,7 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.4"))  # Groq defaults to 1.0: vaguer answers, even made-up titles
 REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low")  # gpt-oss only: low | medium | high — low is much faster
 USER_NAME = os.getenv("USER_NAME", "Neha")
 TTS_VOICE = os.getenv("TTS_VOICE", "en-CA-LiamNeural")
