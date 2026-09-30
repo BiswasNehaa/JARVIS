@@ -48,6 +48,7 @@ polish) is a one-file change — see the commented-out lines in `.env.example`.
    python -m src.jarvis.main
    ```
    Say **"Hey Jarvis"**, wait for "listening...", then speak your request.
+   Say **"Bye Jarvis"** (or press Ctrl+C in the terminal) to quit.
 
 ## Roadmap
 
