@@ -16,6 +16,9 @@ NEAR_MISS_THRESHOLD = 0.15
 NEAR_MISS_WAIT_FRAMES = 6  # ~0.5s: let the score finish peaking before falling back to Whisper
 BUFFER_FRAMES = 30  # ~2.4s of audio kept for the Whisper check
 WAKE_PHRASE = re.compile(r"\b(hey|hi|hello|hiya|ok|okay)\b[\s,.!]*(jarvis|jervis|jarvi)\b", re.IGNORECASE)
+# "Bye Jarvis" quits JARVIS entirely (Whisper often writes it "By Jarvis"). The wake-word model keys
+# on "Jarvis", so it can fire on this too.
+GOODBYE_PHRASE = re.compile(r"\b(bye|by|buy|goodbye|good bye)\b[\s,.!]*(jarvis|jervis|jarvi)\b", re.IGNORECASE)
 
 _recent_frames: deque[np.ndarray] = deque(maxlen=BUFFER_FRAMES)
 _near_miss_frames_left = 0
@@ -31,7 +34,18 @@ def create_model() -> Model:
 
 def _whisper_confirms() -> bool:
     text = stt.transcribe(np.concatenate(list(_recent_frames)).tolist())
-    return bool(WAKE_PHRASE.search(text))
+    return bool(WAKE_PHRASE.search(text) or GOODBYE_PHRASE.search(text))
+
+
+def is_goodbye(text: str) -> bool:
+    return bool(GOODBYE_PHRASE.search(text))
+
+
+def said_goodbye() -> bool:
+    """Right after a detection: was it actually "Bye Jarvis"? Checks the last ~2.4s of audio."""
+    if not _recent_frames:
+        return False
+    return is_goodbye(stt.transcribe(np.concatenate(list(_recent_frames)).tolist()))
 
 
 def detected(model: Model, frame: np.ndarray) -> bool:

@@ -1,5 +1,7 @@
 import os
 import re
+import signal
+import sys
 import threading
 import time
 from collections import deque
@@ -257,6 +259,37 @@ def _warm_up() -> None:
     print(f"[timing] models warmed up in {time.perf_counter() - t:.1f}s")
 
 
+def _quit(name: str) -> None:
+    """"Bye Jarvis": say goodbye and exit the whole program, HUD included."""
+    print("(goodbye — shutting down)")
+    hud.set_state("SPEAKING")
+    try:
+        tts.speak(f"Bye, {name}.")
+    finally:
+        hud.hide_window()
+        os._exit(0)
+
+
+def _quit_on_ctrl_c() -> None:
+    """Ctrl+C in the terminal didn't always quit: the HUD's window loop owns the main thread, and
+    Python only raises KeyboardInterrupt when the main thread runs Python code. On Windows, ask the
+    console to call us directly instead (on its own thread), and exit from there."""
+    if sys.platform != "win32":
+        signal.signal(signal.SIGINT, lambda *_: os._exit(0))
+        return
+    import ctypes
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_uint)
+    def handler(event: int) -> bool:
+        if event in (0, 1):  # CTRL_C_EVENT, CTRL_BREAK_EVENT
+            print("\nCtrl+C — JARVIS shutting down.", flush=True)
+            os._exit(0)
+        return False
+
+    _quit_on_ctrl_c.handler = handler  # keep a reference, or it gets garbage-collected mid-run
+    ctypes.windll.kernel32.SetConsoleCtrlHandler(handler, True)
+
+
 def _run_voice_loop() -> None:
     _background.submit(_warm_up).add_done_callback(
         lambda f: f.exception() and print(f"(warm-up failed, first reply will be slower: {f.exception()})")
@@ -267,7 +300,8 @@ def _run_voice_loop() -> None:
     last_speaker_name: str | None = None
     min_speaker_samples = int(MIN_SPEAKER_UTTERANCE_SECONDS * SAMPLE_RATE)
 
-    print('JARVIS is listening. Say "Hey Jarvis", "Hello Jarvis" or "Hi Jarvis" to wake me up. (Close the HUD window to quit)')
+    print('JARVIS is listening. Say "Hey Jarvis", "Hello Jarvis" or "Hi Jarvis" to wake me up.')
+    print('Say "Bye Jarvis" or press Ctrl+C to quit.')
     hud.set_state("IDLE")
 
     with Microphone() as mic:
@@ -277,6 +311,9 @@ def _run_voice_loop() -> None:
                 _speech.observe_background(frame)
                 continue
 
+            # The wake-word model mostly listens for "Jarvis", so "Bye Jarvis" can trigger it too.
+            # Check which one it was while the popup opens; the mic keeps buffering meanwhile.
+            goodbye_check = _background.submit(wake_word.said_goodbye)
             print("Wake word detected — listening...")
             # A new chat after a long gap starts fresh: old topics left in the history can pull
             # answers toward what was said earlier instead of what was just asked.
@@ -285,6 +322,8 @@ def _run_voice_loop() -> None:
             hud.show_window()
             hud.set_state("ACTIVATING")
             time.sleep(ACTIVATING_FLASH_SECONDS)
+            if goodbye_check.result():
+                _quit(last_speaker_name or config.USER_NAME)
 
             # Conversation mode: after JARVIS answers, keep listening for a follow-up without
             # needing "Hey Jarvis" again. Goes back to sleep after FOLLOW_UP_SECONDS of silence,
@@ -324,6 +363,9 @@ def _run_voice_loop() -> None:
                         _log_timing(t_start, t_recorded, t_transcribed)
                         break
                     print(f"You: {text}")
+
+                    if wake_word.is_goodbye(text):
+                        _quit(last_speaker_name or config.USER_NAME)
 
                     if _is_stop_command(text):
                         print("(session stopped)")
@@ -396,6 +438,7 @@ def _run_voice_loop() -> None:
 
 def main() -> None:
     config.require_keys()
+    _quit_on_ctrl_c()
     hud.create_window()
     webview.start(_run_voice_loop)
     # webview.start() returns once the HUD window is closed. Python then starts shutting down, but the
