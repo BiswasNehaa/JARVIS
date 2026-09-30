@@ -23,7 +23,24 @@ def _get_model() -> WhisperModel:
 FILLER_PROMPT = "Umm, let me think, like, hmm... Okay, so, uh, here's what I'm, like, thinking."
 
 
-def transcribe(pcm_samples: list[int], keep_fillers: bool = False) -> str:
+CONTEXT_PROMPT_CHARS = 400  # Whisper only reads ~224 tokens of prompt; keep the most recent part
+
+
+def conversation_prompt(history: list[dict], speaker_name: str) -> str:
+    """The last few lines of the conversation, written like a transcript. Whisper treats its prompt
+    as "the text just before this audio", so words already said (a library, a name, a place) are
+    spelled and heard correctly when they come up again instead of turning into sound-alikes."""
+    lines = [
+        f"{speaker_name if turn['role'] == 'user' else 'JARVIS'}: {turn['content']}"
+        for turn in history
+        if turn.get("role") in ("user", "assistant") and turn.get("content")
+    ]
+    if config.STT_HINTS:
+        lines.insert(0, config.STT_HINTS)
+    return " ".join(lines)[-CONTEXT_PROMPT_CHARS:]
+
+
+def transcribe(pcm_samples: list[int], keep_fillers: bool = False, context: str = "") -> str:
     audio = np.array(pcm_samples, dtype=np.int16).astype(np.float32) / 32768.0
     # Greedy decoding (beam_size=1) is roughly 2x faster than the default beam of 5 with no audible
     # accuracy loss on short spoken commands; vad_filter skips silent stretches instead of decoding them.
@@ -33,6 +50,6 @@ def transcribe(pcm_samples: list[int], keep_fillers: bool = False) -> str:
         beam_size=1,
         vad_filter=True,
         condition_on_previous_text=False,
-        initial_prompt=FILLER_PROMPT if keep_fillers else None,
+        initial_prompt=" ".join(p for p in (context, FILLER_PROMPT if keep_fillers else "") if p) or None,
     )
     return " ".join(segment.text.strip() for segment in segments).strip()
