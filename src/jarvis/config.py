@@ -30,7 +30,12 @@ SILENCE_RMS_THRESHOLD = 300  # minimum int16 amplitude for speech; raised automa
 # webrtcvad (installed via webrtcvad-wheels) must also hear a voice, so steady fan/hum noise can't
 # keep a recording open until MAX_COMMAND_SECONDS. 0-3, higher = stricter.
 VAD_AGGRESSIVENESS = int(os.getenv("VAD_AGGRESSIVENESS", "2"))
+# base.en: ~0.7s per check on this laptop. small.en hears accents and technical words noticeably
+# better but takes ~2.3s, which adds about 1.5s to every reply (measured 2026-09-30).
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base.en")
+# Optional words you use a lot that Whisper keeps mishearing (names, courses, libraries), written
+# as a sentence, e.g. "Talking about college, Python and machine learning." Empty by default.
+STT_HINTS = os.getenv("STT_HINTS", "").strip()
 
 AUDIO_LEVEL_REFERENCE = 3000  # int16 mean-abs amplitude mapped to "full" HUD waveform reactivity — tune by ear
 

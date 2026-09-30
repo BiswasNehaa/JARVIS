@@ -45,7 +45,7 @@ def _sounds_finished(text: str) -> bool:
     return last_word not in UNFINISHED_ENDINGS
 
 
-def _record_command(mic: Microphone, no_speech_seconds: float | None = None) -> list[int]:
+def _record_command(mic: Microphone, no_speech_seconds: float | None = None, context: str = "") -> list[int]:
     """Record until you're done talking.
 
     A short pause (SILENCE_HANG_MS) only *might* be the end: JARVIS transcribes what it has so far,
@@ -81,7 +81,7 @@ def _record_command(mic: Microphone, no_speech_seconds: float | None = None) -> 
                 break
             if silent_frames >= SILENCE_HANG_FRAMES:
                 if not check_is_current and (check is None or check.done()):
-                    check = _background.submit(stt.transcribe, list(samples), keep_fillers=True)
+                    check = _background.submit(stt.transcribe, list(samples), keep_fillers=True, context=context)
                     check_is_current = True
                 elif check_is_current and check.done() and _sounds_finished(check.result()):
                     stop_reason = "silence"
@@ -299,7 +299,11 @@ def _run_voice_loop() -> None:
                 try:
                     t_start = time.perf_counter()
                     enroll_seconds = 0.0  # the "what's your name?" exchange is a conversation, not lag
-                    samples = _record_command(mic, no_speech_seconds=config.FOLLOW_UP_SECONDS if follow_up else None)
+                    # What's been said so far helps Whisper hear the same words right the next time.
+                    stt_context = stt.conversation_prompt(history, last_speaker_name or config.USER_NAME)
+                    samples = _record_command(
+                        mic, no_speech_seconds=config.FOLLOW_UP_SECONDS if follow_up else None, context=stt_context
+                    )
                     hud.set_audio_level(0)
                     t_recorded = time.perf_counter()
                     if follow_up and _last_recording["stop_reason"] == "no speech":
@@ -313,7 +317,7 @@ def _run_voice_loop() -> None:
                     hud.set_state("PROCESSING")
                     text = _last_recording.get("text")
                     if text is None:
-                        text = stt.transcribe(samples)
+                        text = stt.transcribe(samples, context=stt_context)
                     t_transcribed = time.perf_counter()
                     if not text:
                         print("(didn't catch that)")
