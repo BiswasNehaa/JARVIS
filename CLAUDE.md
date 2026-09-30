@@ -117,6 +117,18 @@ the phase roadmap.
   1.0; 0.6 once invented a movie title). History keeps the last `HISTORY_TURNS`=6 exchanges and is
   cleared when woken after `HISTORY_RESET_SECONDS`=600 of quiet. Not yet confirmed live.
 
+- **Mishearing fixes — 2026-09-30** (log: "bunked" heard as "bumped", "scikit-learn" as "XK learn").
+  Whisper now gets the recent conversation as its prompt (`stt.conversation_prompt`), so words already
+  said come back spelled right (test clips: "sicket lung" became "scikit-learn"); optional `STT_HINTS`
+  env for her own recurring vocabulary. `brain.py`'s prompt tells the model its input is speech-to-text
+  and to answer the most likely intended words. No word-replacement lists (her rule: nothing
+  hard-coded). Stayed on `base.en`: `small.en` hears better but measured ~2.3s vs ~0.7s per check on
+  her laptop. "Bumped/bunked" is still not reliably recovered. `brain._single_reply` keeps only the
+  first answer when gpt-oss glues alternatives together ("...?Got it...").
+- **Quitting — 2026-09-30**: "Bye Jarvis" (mid-conversation, or as the wake phrase) says bye and exits;
+  Ctrl+C works via a Windows console handler (`main._quit_on_ctrl_c`), since the webview loop owns
+  the main thread and swallowed KeyboardInterrupt.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by
