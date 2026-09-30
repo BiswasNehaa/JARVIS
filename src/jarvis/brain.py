@@ -1,4 +1,5 @@
 import json
+import re
 
 from groq import Groq
 
@@ -25,6 +26,14 @@ Read the room. When {user_name} is joking, joke back. When they're stressed, tir
 be kind first, take them seriously, and give real, specific help. Never tell them to "stop" doing \
 something or scold them. If they say they've already tried something, believe them and offer something \
 genuinely different, or ask one good question about what's actually happening.
+
+You hear {user_name} through speech-to-text, which sometimes swaps a word for one that sounds alike, \
+splits a technical name into nonsense syllables, or mangles slang and Indian English. When a word or \
+sentence doesn't make sense, or its literal meaning is odd for the situation, work out what they \
+most likely said from how it would sound and from the conversation so far, and answer that. If your guess changes the meaning, show it lightly in \
+passing (say the corrected word naturally) so they can correct you; never repeat the garbled version \
+back as if it were real, and never lecture them about mishearing. Only ask what they meant when you \
+genuinely can't make a good guess, and then ask once, in one short question.
 
 Answer first, charm second. Your first words answer exactly what {user_name} asked, with concrete \
 specifics: a real title, a real name, a real number, a real dish. If they ask for a recommendation, \
@@ -120,6 +129,18 @@ def _speed_options() -> dict:
     return {}
 
 
+# gpt-oss sometimes writes several alternative answers back to back with no space between them
+# ("...looking at?Got it, you're asking...?I can't actually see..."). A sentence ending that runs
+# straight into a capital letter only happens at those seams, so keep the first answer.
+_GLUED_REPLY = re.compile(r"(?<=[a-z0-9)\]'\"’”][.!?])(?=[A-Z])")
+
+
+def _single_reply(text: str | None) -> str | None:
+    if not text:
+        return text
+    return _GLUED_REPLY.split(text.strip(), maxsplit=1)[0].strip()
+
+
 def respond(user_text: str, history: list[dict], speaker_name: str | None = None) -> str:
     system_prompt = _system_prompt(speaker_name or config.USER_NAME)
     messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": user_text}]
@@ -136,7 +157,7 @@ def respond(user_text: str, history: list[dict], speaker_name: str | None = None
         )
         message = response.choices[0].message
         if not message.tool_calls:
-            return message.content
+            return _single_reply(message.content)
 
         messages.append(message.model_dump(exclude_none=True))
         for call in message.tool_calls:
@@ -144,4 +165,4 @@ def respond(user_text: str, history: list[dict], speaker_name: str | None = None
             result = skills.dispatch(call.function.name, arguments)
             messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
 
-    return message.content or "Lost my train of thought there — try that again?"
+    return _single_reply(message.content) or "Lost my train of thought there — try that again?"
