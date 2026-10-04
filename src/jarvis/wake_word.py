@@ -41,6 +41,11 @@ def is_goodbye(text: str) -> bool:
     return bool(GOODBYE_PHRASE.search(text))
 
 
+def recent_audio() -> list[int]:
+    """The last ~2.4s of audio, which ends with the wake phrase just detected."""
+    return np.concatenate(list(_recent_frames)).tolist() if _recent_frames else []
+
+
 def said_goodbye() -> bool:
     """Right after a detection: was it actually "Bye Jarvis"? Checks the last ~2.4s of audio."""
     if not _recent_frames:
