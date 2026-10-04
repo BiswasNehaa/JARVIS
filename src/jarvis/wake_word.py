@@ -46,11 +46,9 @@ def recent_audio() -> list[int]:
     return np.concatenate(list(_recent_frames)).tolist() if _recent_frames else []
 
 
-def said_goodbye() -> bool:
-    """Right after a detection: was it actually "Bye Jarvis"? Checks the last ~2.4s of audio."""
-    if not _recent_frames:
-        return False
-    return is_goodbye(stt.transcribe(np.concatenate(list(_recent_frames)).tolist()))
+def said_goodbye(audio: list[int]) -> bool:
+    """Right after a detection: was it actually "Bye Jarvis"? audio: recent_audio() at detection."""
+    return bool(audio) and is_goodbye(stt.transcribe(audio))
 
 
 def detected(model: Model, frame: np.ndarray) -> bool:

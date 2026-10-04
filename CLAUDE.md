@@ -100,7 +100,12 @@ the phase roadmap.
   `FOLLOW_UP_SECONDS` (default 8, env overridable, 0 disables) without the wake word; silence, a stop
   phrase or an error ends the conversation. `Microphone.drain()` discards audio buffered while JARVIS
   spoke (otherwise it hears its own reply), and the wake-word model is reset after each conversation.
-  Confirmed live 2026-09-28.
+  Confirmed live 2026-09-28. **Changed 2026-10-04** (user: it shouldn't close until "Bye Jarvis" or a
+  long quiet spell): `FOLLOW_UP_SECONDS` default 8 → 600, `MAX_COMMAND_SECONDS` now counts from when
+  she starts talking (only a 0.5s lead-in is kept while waiting), and an empty transcript mid-
+  conversation keeps listening instead of ending it. Also fixed: the wake-word model is now reset
+  right at detection; it still held "Hey Jarvis", so the stop-listener re-detected it and cut off the
+  first reply before its first word ("tts first audio 0.00s").
 - **Wake phrases — 2026-09-28**: "Hey/Hello/Hi Jarvis" all wake it. The pretrained model already
   scores most of these high; near misses (0.15-0.5) get a Whisper double-check (`wake_word.py`).
 - **Pause-tolerant end of speech — 2026-09-28** (user: it cut her off when she paused 2-3s to think).

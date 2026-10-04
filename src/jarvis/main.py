@@ -17,7 +17,8 @@ ACTIVATING_FLASH_SECONDS = 0.35
 
 FRAME_MS = 1000 * FRAME_SAMPLES / SAMPLE_RATE
 SILENCE_HANG_FRAMES = int(config.SILENCE_HANG_MS / FRAME_MS)
-MAX_FRAMES = int(config.MAX_COMMAND_SECONDS * 1000 / FRAME_MS)
+MAX_FRAMES = int(config.MAX_COMMAND_SECONDS * 1000 / FRAME_MS)  # counted from when you start talking
+PRE_ROLL_SAMPLES = SAMPLE_RATE // 2
 NO_SPEECH_FRAMES = int(config.NO_SPEECH_TIMEOUT_SECONDS * 1000 / FRAME_MS)
 
 _speech = SpeechDetector(config.VAD_AGGRESSIVENESS, config.SILENCE_RMS_THRESHOLD)
@@ -70,7 +71,12 @@ def _record_command(
     _last_recording.pop("text", None)
     pending = deque(first_frames or [])
 
-    for frame_index in range(MAX_FRAMES):
+    speech_start_index = 0
+    frame_index = -1
+    while True:
+        frame_index += 1
+        if speech_started and frame_index - speech_start_index >= MAX_FRAMES:
+            break  # stop_reason stays "max length"
         frame = pending.popleft() if pending else mic.read_frame()
         samples.extend(frame.tolist())
 
@@ -78,6 +84,8 @@ def _record_command(
         hud.set_audio_level(min(1.0, amplitude / config.AUDIO_LEVEL_REFERENCE))
 
         if _speech.is_speech(frame):
+            if not speech_started:
+                speech_start_index = frame_index
             speech_started = True
             silent_frames = 0
             check_is_current = False
@@ -96,6 +104,10 @@ def _record_command(
         elif frame_index >= no_speech_frames:
             stop_reason = "no speech"
             break
+        else:
+            # Waiting for you to start (up to FOLLOW_UP_SECONDS, minutes): keep only a short lead-in
+            # so the first syllable isn't clipped, not minutes of silence.
+            del samples[:-PRE_ROLL_SAMPLES]
 
     if check_is_current and check is not None:
         # Audio after the check was all silence, so its transcript covers the whole recording.
@@ -396,8 +408,13 @@ def _run_voice_loop() -> None:
 
             # The wake-word model mostly listens for "Jarvis", so "Bye Jarvis" can trigger it too.
             # Check which one it was while the popup opens; the mic keeps buffering meanwhile.
-            goodbye_check = _background.submit(wake_word.said_goodbye)
-            wake_embedding = _background.submit(speaker.embed, wake_word.recent_audio())
+            wake_audio = wake_word.recent_audio()
+            goodbye_check = _background.submit(wake_word.said_goodbye, wake_audio)
+            wake_embedding = _background.submit(speaker.embed, wake_audio)
+            # Clear the wake-word model now. It still held "Hey Jarvis", so while the first reply was
+            # spoken the stop-listener saw the wake word again and cut JARVIS off before its first
+            # word: the reply printed but was never said, then the conversation timed out.
+            wake_word.reset(model)
             print("Wake word detected — listening...")
             # A new chat after a long gap starts fresh: old topics left in the history can pull
             # answers toward what was said earlier instead of what was just asked.
@@ -454,6 +471,8 @@ def _run_voice_loop() -> None:
                     if not text:
                         print("(didn't catch that)")
                         _log_timing(t_start, t_recorded, t_transcribed)
+                        if follow_up:
+                            continue  # a cough or a door mid-conversation shouldn't end it
                         break
                     print(f"You: {text}")
 
