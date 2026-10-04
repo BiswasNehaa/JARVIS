@@ -23,7 +23,7 @@ MAX_COMMAND_SECONDS = 25  # hard cap, in case you never go quiet (roomy, since p
 NO_SPEECH_TIMEOUT_SECONDS = 6  # give up if you never start talking after the wake word
 # After JARVIS answers it keeps listening this long for a follow-up, no "Hey Jarvis" needed;
 # silence for this long ends the conversation. Set to 0 to require the wake word every time.
-FOLLOW_UP_SECONDS = float(os.getenv("FOLLOW_UP_SECONDS", "8"))
+FOLLOW_UP_SECONDS = float(os.getenv("FOLLOW_UP_SECONDS", "600"))  # 10 min: stays open until "Bye Jarvis" or a long quiet spell
 SILENCE_HANG_MS = int(os.getenv("SILENCE_HANG_MS", "1200"))  # after this much quiet, stop IF what you said sounds like a finished sentence
 MAX_SILENCE_HANG_MS = int(os.getenv("MAX_SILENCE_HANG_MS", "3500"))  # stop after this much quiet no matter what (a pause to think mid-sentence fits under it)
 SILENCE_RMS_THRESHOLD = 300  # minimum int16 amplitude for speech; raised automatically in noisy rooms (audio.SpeechDetector)
