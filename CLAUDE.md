@@ -130,7 +130,7 @@ the phase roadmap.
   hard-coded). Stayed on `base.en`: `small.en` hears better but measured ~2.3s vs ~0.7s per check on
   her laptop. "Bumped/bunked" is still not reliably recovered. `brain._single_reply` keeps only the
   first answer when gpt-oss glues alternatives together ("...?Got it...").
-- **Quitting — 2026-09-30**: "Bye Jarvis" (mid-conversation, or as the wake phrase) says bye and exits;
+- **Quitting — 2026-09-30**: "Bye Jarvis" (mid-conversation, over a reply since 2026-10-05, or as the wake phrase) says bye and exits;
   Ctrl+C works via a Windows console handler (`main._quit_on_ctrl_c`), since the webview loop owns
   the main thread and swallowed KeyboardInterrupt.
 

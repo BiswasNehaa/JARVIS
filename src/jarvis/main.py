@@ -152,28 +152,40 @@ def _heard_stop(text: str, reply: str) -> bool:
     return False
 
 
-def _listen_for_stop(mic: Microphone, model, reply: str, done: threading.Event) -> None:
-    """While JARVIS talks, listen for "stop" (or "Hey Jarvis") and cut the speech off."""
+def _listen_for_stop(mic: Microphone, model, reply: str, done: threading.Event, heard: dict) -> None:
+    """While JARVIS talks, listen for "stop" (or "Hey Jarvis") and cut the speech off.
+
+    "Bye Jarvis" said over JARVIS's reply also cuts it off, and sets heard["goodbye"] so the caller
+    quits. Before, it only interrupted the speech, and the audio was then thrown away as echo, so
+    JARVIS kept listening as if nothing was said."""
     window: deque[np.ndarray] = deque(maxlen=BARGE_IN_WINDOW_FRAMES)
     frames_since_check = 0
+    reply_says_goodbye = wake_word.is_goodbye(reply)  # then hearing it could just be JARVIS's own voice
     while not done.is_set():
         frame = mic.read_frame()
         window.append(frame)
         if wake_word.detected(model, frame):
+            heard["goodbye"] = wake_word.said_goodbye(wake_word.recent_audio())
             tts.interrupt()
             return
         frames_since_check += 1
         if frames_since_check < BARGE_IN_CHECK_EVERY or not any(_speech.is_speech(f) for f in window):
             continue
         frames_since_check = 0
-        if _heard_stop(stt.transcribe(np.concatenate(window).tolist()), reply):
+        text = stt.transcribe(np.concatenate(window).tolist())
+        if wake_word.is_goodbye(text) and not reply_says_goodbye:
+            heard["goodbye"] = True
+            tts.interrupt()
+            return
+        if _heard_stop(text, reply):
             tts.interrupt()
             return
 
 
 def _speak_interruptible(mic: Microphone, model, reply: str) -> dict:
     done = threading.Event()
-    listener = threading.Thread(target=_listen_for_stop, args=(mic, model, reply, done), daemon=True)
+    heard: dict = {}
+    listener = threading.Thread(target=_listen_for_stop, args=(mic, model, reply, done, heard), daemon=True)
     listener.start()
     try:
         timing = tts.speak(reply)
@@ -181,7 +193,8 @@ def _speak_interruptible(mic: Microphone, model, reply: str) -> dict:
         done.set()
         listener.join()
         wake_word.reset(model)
-    if timing.get("interrupted"):
+    timing["goodbye"] = heard.get("goodbye", False)
+    if timing.get("interrupted") and not timing["goodbye"]:
         print("(stopped talking — listening)")
     return timing
 
@@ -540,6 +553,8 @@ def _run_voice_loop() -> None:
 
                     hud.set_state("SPEAKING")
                     tts_timing = _speak_interruptible(mic, model, reply)
+                    if tts_timing["goodbye"]:
+                        _quit(speaker_name)
                     _log_timing(t_start, t_recorded, t_transcribed, t_identified, t_replied, tts_timing, enroll_seconds)
                     keep_listening = True
                 except Exception as exc:  # noqa: BLE001 - keep the loop alive across one bad turn
