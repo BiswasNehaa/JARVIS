@@ -129,6 +129,17 @@ the phase roadmap.
   Ctrl+C works via a Windows console handler (`main._quit_on_ctrl_c`), since the webview loop owns
   the main thread and swallowed KeyboardInterrupt.
 
+- **Wake greeting — 2026-10-04** (user asked: say hi back, by name if it knows the voice, ask who it
+  is if not). `main._greet`: if she starts talking within 0.8s of the wake word, no greeting (the
+  audio heard so far starts the recording). Otherwise the wake phrase's own audio is matched: closest
+  enrolled voice ≥ `SPEAKER_SHORT_CLIP_THRESHOLD` (0.55) → hi by name; < `SPEAKER_UNKNOWN_THRESHOLD`
+  (0.40) → hi + "who are you?" via `_enroll_new_speaker(question=...)`; in between → plain hi, the
+  first real sentence settles identity. Greetings are written by the model (`brain.greeting`,
+  temperature 1.0, avoids the last 5) and pre-fetched on their own thread so the hi is instant.
+- **Short-clip speaker matches — 2026-10-04**: short phrases (< 4s) give shaky embeddings (her "How
+  about you?" scored 0.64 and got asked her name). Now a short clip whose closest voice is enrolled
+  and ≥ 0.55 is taken as that person (not learned from). Only clearly low scores trigger "who are you".
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by

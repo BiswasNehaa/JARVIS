@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import datetime
 
 from groq import Groq
 
@@ -166,3 +167,41 @@ def respond(user_text: str, history: list[dict], speaker_name: str | None = None
             messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
 
     return _single_reply(message.content) or "Lost my train of thought there — try that again?"
+
+
+def _time_of_day() -> str:
+    now = datetime.now()
+    part = "morning" if 5 <= now.hour < 12 else "afternoon" if now.hour < 17 else "evening" if now.hour < 22 else "night"
+    return f"{now:%A} {part}"
+
+
+def greeting(name: str | None, ask_who: bool = False, avoid: list[str] | None = None) -> str:
+    """A short spoken hello for when someone wakes JARVIS. Written by the model each time so it
+    varies; `avoid` holds recent greetings so it doesn't repeat itself.
+
+    name: the recognized speaker, or None when JARVIS can't tell who it is yet.
+    ask_who: the voice doesn't sound like anyone enrolled, so say hi and ask who they are.
+    """
+    if ask_who:
+        cue = (
+            "Someone just woke you up by saying hi, but you don't recognize their voice. Say hi and "
+            "ask who they are, warmly, in one line under 15 words. Don't use any name."
+        )
+    elif name:
+        cue = f"{name} just woke you up by saying hi. Say hi back, using their name, in one short warm line under 10 words."
+    else:
+        cue = "Someone just woke you up by saying hi. Say hi back in one short warm line under 10 words, without using a name."
+    cue += f" It's {_time_of_day()}. Just the greeting, nothing else."
+    if avoid:
+        cue += " Say it differently from these: " + " | ".join(avoid)
+    response = _get_client().chat.completions.create(
+        model=config.GROQ_MODEL,
+        max_tokens=300,
+        temperature=1.0,  # variety matters more than precision for a hello
+        messages=[
+            {"role": "system", "content": _system_prompt(name or config.USER_NAME)},
+            {"role": "user", "content": f"[{cue}]"},
+        ],
+        **_speed_options(),
+    )
+    return _single_reply(response.choices[0].message.content) or ""

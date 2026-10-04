@@ -42,6 +42,11 @@ AUDIO_LEVEL_REFERENCE = 3000  # int16 mean-abs amplitude mapped to "full" HUD wa
 VOICEPRINTS_PATH = Path(os.getenv("VOICEPRINTS_PATH", "data/voiceprints/speakers.json"))
 SPEAKER_MATCH_THRESHOLD = float(os.getenv("SPEAKER_MATCH_THRESHOLD", "0.75"))  # cosine similarity cutoff for "known voice" — Neha's live turns scored 0.77-0.91 (2026-09-28)
 SPEAKER_STICKY_THRESHOLD = float(os.getenv("SPEAKER_STICKY_THRESHOLD", "0.65"))  # near-miss cutoff: at or above this, stay with the last speaker instead of re-asking
+# Short clips (a "Hey Jarvis", a quick "How about you?") give shaky voice embeddings: Neha's own
+# scored 0.58-0.70 on them while her full sentences score 0.75-0.91. For those, being the closest
+# enrolled voice with at least this score is enough; asking "who are you?" needs a clearly low score.
+SPEAKER_SHORT_CLIP_THRESHOLD = float(os.getenv("SPEAKER_SHORT_CLIP_THRESHOLD", "0.55"))
+SPEAKER_UNKNOWN_THRESHOLD = float(os.getenv("SPEAKER_UNKNOWN_THRESHOLD", "0.40"))  # wake phrase below this: greet and ask who it is
 SPEAKER_MAX_SAMPLES = 30  # voice samples kept per speaker (oldest dropped first) — more samples, steadier voiceprint
 STOP_PHRASES = (  # said mid-command, ends the turn immediately instead of going to the brain
     "stop session",

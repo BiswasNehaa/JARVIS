@@ -5,7 +5,7 @@ import sys
 import threading
 import time
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 
 import numpy as np
 import webview
@@ -23,6 +23,7 @@ NO_SPEECH_FRAMES = int(config.NO_SPEECH_TIMEOUT_SECONDS * 1000 / FRAME_MS)
 _speech = SpeechDetector(config.VAD_AGGRESSIVENESS, config.SILENCE_RMS_THRESHOLD)
 _last_recording: dict = {}  # stop_reason + seconds of the most recent _record_command, for timing logs
 _background = ThreadPoolExecutor(max_workers=2)
+_greeting_writer = ThreadPoolExecutor(max_workers=1)  # own thread, so it never delays transcription
 
 
 MAX_SILENCE_HANG_FRAMES = int(config.MAX_SILENCE_HANG_MS / FRAME_MS)
@@ -47,14 +48,17 @@ def _sounds_finished(text: str) -> bool:
     return last_word not in UNFINISHED_ENDINGS
 
 
-def _record_command(mic: Microphone, no_speech_seconds: float | None = None, context: str = "") -> list[int]:
+def _record_command(
+    mic: Microphone, no_speech_seconds: float | None = None, context: str = "", first_frames: list | None = None
+) -> list[int]:
     """Record until you're done talking.
 
     A short pause (SILENCE_HANG_MS) only *might* be the end: JARVIS transcribes what it has so far,
     in the background while still listening, and only stops if that reads like a finished sentence.
     Otherwise it waits out pauses up to MAX_SILENCE_HANG_MS, so a 2-3s pause to think mid-sentence
     doesn't get cut off. The check's transcript is kept in _last_recording["text"] so the main loop
-    doesn't transcribe the same audio twice.
+    doesn't transcribe the same audio twice. first_frames: audio already read off the mic (you
+    started talking before recording began), processed before anything new.
     """
     samples: list[int] = []
     speech_started = False
@@ -64,9 +68,10 @@ def _record_command(mic: Microphone, no_speech_seconds: float | None = None, con
     check = None  # background transcription of everything said before the current pause
     check_is_current = False  # False once you start talking again after that check was started
     _last_recording.pop("text", None)
+    pending = deque(first_frames or [])
 
     for frame_index in range(MAX_FRAMES):
-        frame = mic.read_frame()
+        frame = pending.popleft() if pending else mic.read_frame()
         samples.extend(frame.tolist())
 
         amplitude = np.abs(frame).mean()
@@ -202,8 +207,10 @@ def _extract_name(text: str) -> str:
     return " ".join(w.capitalize() for w in words)
 
 
-def _enroll_new_speaker(mic: Microphone, first_utterance_samples: list[int]) -> str:
-    tts.speak("I don't think we've met — what's your name?")
+def _enroll_new_speaker(
+    mic: Microphone, first_utterance_samples: list[int] | None, question: str = "I don't think we've met — what's your name?"
+) -> str:
+    tts.speak(question)
 
     hud.set_state("LISTENING")
     answer_samples = _record_command(mic)
@@ -213,12 +220,12 @@ def _enroll_new_speaker(mic: Microphone, first_utterance_samples: list[int]) -> 
     name = _extract_name(answer_text) if answer_text else "friend"
 
     hud.set_state("PROCESSING")
-    # The name answer is often a single word, too short for a trustworthy embedding — only keep it
-    # as a voice sample when it's long enough. The first utterance always is (it had to be, to get here).
-    clips = [first_utterance_samples]
-    if len(answer_samples) >= int(MIN_SPEAKER_UTTERANCE_SECONDS * SAMPLE_RATE):
-        clips.append(answer_samples)
-    speaker.enroll(name, [speaker.embed(clip) for clip in clips])
+    # The name answer is often a single word, too short for a trustworthy embedding — only keep clips
+    # long enough to be voice samples. (When asked from the greeting, there's no first utterance yet.)
+    min_samples = int(MIN_SPEAKER_UTTERANCE_SECONDS * SAMPLE_RATE)
+    clips = [clip for clip in (first_utterance_samples, answer_samples) if clip and len(clip) >= min_samples]
+    if clips:
+        speaker.enroll(name, [speaker.embed(clip) for clip in clips])
 
     hud.set_state("SPEAKING")
     tts.speak(f"Nice to meet you, {name}. I'll remember your voice from now on.")
@@ -259,6 +266,81 @@ def _warm_up() -> None:
     print(f"[timing] models warmed up in {time.perf_counter() - t:.1f}s")
 
 
+GREETING_GATE_SECONDS = 0.8  # after the wake word, this long to see if you go straight into a question
+GREETING_GATE_SPEECH_FRAMES = 3  # ~0.25s of voice in that window means you've started talking
+GREETING_STALE_SECONDS = 1200  # pre-written greetings mention the time of day, so don't keep them too long
+GREETING_WAIT_SECONDS = 3.0  # skip the greeting rather than keep you waiting on a slow API call
+
+_greetings: dict[tuple, tuple[float, Future]] = {}  # (name, ask_who) -> (written at, greeting)
+_recent_greetings: deque[str] = deque(maxlen=5)
+
+
+def _prepare_greeting(name: str | None, ask_who: bool = False) -> None:
+    """Write the next greeting in the background, so saying hi gets an instant hi back."""
+    _greetings[(name, ask_who)] = (
+        time.monotonic(),
+        _greeting_writer.submit(brain.greeting, name, ask_who, list(_recent_greetings)),
+    )
+
+
+def _take_greeting(name: str | None, ask_who: bool = False) -> str:
+    key = (name, ask_who)
+    written_at, future = _greetings.get(key, (0.0, None))
+    if future is None or time.monotonic() - written_at > GREETING_STALE_SECONDS:
+        _prepare_greeting(name, ask_who)
+        written_at, future = _greetings[key]
+    del _greetings[key]
+    try:
+        text = future.result(timeout=GREETING_WAIT_SECONDS)
+    except Exception as exc:  # noqa: BLE001 - no greeting is better than a stalled wake-up
+        print(f"(greeting skipped: {exc or 'too slow'})")
+        return ""
+    _recent_greetings.append(text)
+    _prepare_greeting(name, ask_who)  # ready for next time
+    return text
+
+
+def _greet(mic: Microphone, wake_embedding: Future, last_speaker_name: str | None) -> tuple[list | None, str | None]:
+    """Say hi back when woken. Returns (frames to start the recording with, who it is).
+
+    If you go straight into a question ("Hey Jarvis, what time is it?") there's no greeting; the
+    audio already heard starts the recording. Otherwise JARVIS says hi by name when it knows the
+    voice, asks who it is when the voice is clearly unfamiliar, and says a plain hi when unsure
+    (a wake phrase is too short to be sure; the first real sentence settles it).
+    """
+    gate = [mic.read_frame() for _ in range(int(GREETING_GATE_SECONDS * 1000 / FRAME_MS))]
+    if sum(_speech.is_speech(frame) for frame in gate) >= GREETING_GATE_SPEECH_FRAMES:
+        return gate, last_speaker_name
+
+    best_name, score = None, -1.0
+    try:
+        best_name, score = speaker.best_match(wake_embedding.result())
+    except Exception as exc:  # noqa: BLE001 - greet without a name rather than not at all
+        print(f"(couldn't check the voice on the wake phrase: {exc})")
+    if best_name is not None and score >= config.SPEAKER_SHORT_CLIP_THRESHOLD:
+        print(f"(wake phrase sounds like {best_name}, {score:.2f})")
+        name, ask_who = best_name, False
+    elif last_speaker_name:
+        name, ask_who = last_speaker_name, False
+    elif best_name is None or score < config.SPEAKER_UNKNOWN_THRESHOLD:
+        print(f"(wake phrase voice not recognized — best {best_name}, {score:.2f})")
+        name, ask_who = None, True
+    else:
+        name, ask_who = None, False
+
+    hud.set_state("PROCESSING")
+    text = _take_greeting(name, ask_who)
+    if not text:
+        return None, name
+    print(f"JARVIS: {text}")
+    hud.set_state("SPEAKING")
+    if ask_who:
+        return None, _enroll_new_speaker(mic, None, question=text)
+    tts.speak(text)
+    mic.drain()  # its own voice, picked up by the mic
+    return None, name
+
+
 def _quit(name: str) -> None:
     """"Bye Jarvis": say goodbye and exit the whole program, HUD included."""
     print("(goodbye — shutting down)")
@@ -295,6 +377,7 @@ def _run_voice_loop() -> None:
         lambda f: f.exception() and print(f"(warm-up failed, first reply will be slower: {f.exception()})")
     )
     model = wake_word.create_model()
+    _prepare_greeting(config.USER_NAME)  # most wake-ups are you, so have that hello ready
     history: list[dict] = []
     last_turn_at = 0.0
     last_speaker_name: str | None = None
@@ -314,6 +397,7 @@ def _run_voice_loop() -> None:
             # The wake-word model mostly listens for "Jarvis", so "Bye Jarvis" can trigger it too.
             # Check which one it was while the popup opens; the mic keeps buffering meanwhile.
             goodbye_check = _background.submit(wake_word.said_goodbye)
+            wake_embedding = _background.submit(speaker.embed, wake_word.recent_audio())
             print("Wake word detected — listening...")
             # A new chat after a long gap starts fresh: old topics left in the history can pull
             # answers toward what was said earlier instead of what was just asked.
@@ -324,6 +408,12 @@ def _run_voice_loop() -> None:
             time.sleep(ACTIVATING_FLASH_SECONDS)
             if goodbye_check.result():
                 _quit(last_speaker_name or config.USER_NAME)
+            try:
+                first_frames, greeted_name = _greet(mic, wake_embedding, last_speaker_name)
+                last_speaker_name = greeted_name or last_speaker_name
+            except Exception as exc:  # noqa: BLE001 - a failed hello shouldn't stop it listening
+                print(f"(greeting failed: {exc})")
+                first_frames = None
 
             # Conversation mode: after JARVIS answers, keep listening for a follow-up without
             # needing "Hey Jarvis" again. Goes back to sleep after FOLLOW_UP_SECONDS of silence,
@@ -341,7 +431,10 @@ def _run_voice_loop() -> None:
                     # What's been said so far helps Whisper hear the same words right the next time.
                     stt_context = stt.conversation_prompt(history, last_speaker_name or config.USER_NAME)
                     samples = _record_command(
-                        mic, no_speech_seconds=config.FOLLOW_UP_SECONDS if follow_up else None, context=stt_context
+                        mic,
+                        no_speech_seconds=config.FOLLOW_UP_SECONDS if follow_up else None,
+                        context=stt_context,
+                        first_frames=None if follow_up else first_frames,
                     )
                     hud.set_audio_level(0)
                     t_recorded = time.perf_counter()
@@ -390,6 +483,16 @@ def _run_voice_loop() -> None:
                             # Near misses aren't learned from, so they can't drag the voiceprint off.
                             speaker_name = best_name
                             print(f"(near match, assuming still {speaker_name}, {score:.2f})")
+                        elif (
+                            best_name is not None
+                            and score >= config.SPEAKER_SHORT_CLIP_THRESHOLD
+                            and len(samples) < SHORT_UTTERANCE_SECONDS * SAMPLE_RATE
+                        ):
+                            # A short phrase whose closest voice is still a known speaker. Short clips
+                            # score low even for the right person (Neha's "How about you?" scored 0.64
+                            # and got "who are you?"), so this isn't a reason to ask. Not learned from.
+                            speaker_name = best_name
+                            print(f"(short phrase, closest voice {speaker_name}, {score:.2f})")
                         elif last_speaker_name and (
                             follow_up or len(samples) < SHORT_UTTERANCE_SECONDS * SAMPLE_RATE
                         ):
