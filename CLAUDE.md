@@ -153,6 +153,13 @@ the phase roadmap.
   got a movie list). Replaying her log: no unasked-for tips, the garbled line got a short "didn't
   catch that".
 
+- **Polish — 2026-10-05** (her log): greeting said "afternoon" at 12:24 AM (`brain._time_of_day` fell
+  through for 0-4 AM, fixed). Prompt: most replies just react (questions only now and then), play
+  along with imaginative talk instead of pushing real kits/products, never three sentences;
+  `_single_reply` also hard-cuts at `MAX_REPLY_SENTENCES` (3). Any clear goodbye ("bye for now,
+  bye-bye") quits: the model calls the `end_conversation` skill, and main speaks the bye and exits.
+  Tested: "hold on, let me grab water" / "let's talk about something else" don't trigger it.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by

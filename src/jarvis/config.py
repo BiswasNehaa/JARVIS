@@ -13,6 +13,7 @@ TEMPERATURE = float(os.getenv("TEMPERATURE", "0.4"))  # Groq defaults to 1.0: va
 # you wake it again after HISTORY_RESET_SECONDS of quiet. Long histories dilute the current question.
 HISTORY_TURNS = int(os.getenv("HISTORY_TURNS", "6"))
 HISTORY_RESET_SECONDS = float(os.getenv("HISTORY_RESET_SECONDS", "600"))
+MAX_REPLY_SENTENCES = int(os.getenv("MAX_REPLY_SENTENCES", "3"))  # replies are cut after this many sentences
 REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low")  # gpt-oss only: low | medium | high — low is much faster
 USER_NAME = os.getenv("USER_NAME", "Neha")
 TTS_VOICE = os.getenv("TTS_VOICE", "en-CA-LiamNeural")

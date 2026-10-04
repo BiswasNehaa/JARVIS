@@ -10,7 +10,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 import numpy as np
 import webview
 
-from . import brain, config, hud, speaker, stt, tts, wake_word
+from . import brain, config, hud, skills, speaker, stt, tts, wake_word
 from .audio import SAMPLE_RATE, FRAME_SAMPLES, Microphone, SpeechDetector
 
 ACTIVATING_FLASH_SECONDS = 0.35
@@ -552,6 +552,13 @@ def _run_voice_loop() -> None:
                     last_turn_at = time.monotonic()
 
                     hud.set_state("SPEAKING")
+                    if skills.goodbye_requested():
+                        # The brain heard a goodbye ("Nothing, just bye for now"): its reply already
+                        # says bye, so speak it and switch off.
+                        tts.speak(reply)
+                        print("(goodbye — shutting down)")
+                        hud.hide_window()
+                        os._exit(0)
                     tts_timing = _speak_interruptible(mic, model, reply)
                     if tts_timing["goodbye"]:
                         _quit(speaker_name)

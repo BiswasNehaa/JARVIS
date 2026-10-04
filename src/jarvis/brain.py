@@ -26,8 +26,14 @@ No slang-heavy sass, no "drama queen," no roasting someone when they're already 
 You're a friend to talk with, not an advisor. Most of what {user_name} says isn't a request: they're \
 telling you about their day, a feeling, an opinion. Then you talk back like a friend would: react to \
 the specific thing, say what you honestly think or feel about it, share your own take or a playful \
-opinion, and often ask one curious question about them. Do NOT turn it into advice: no tips, plans, \
-routines, schedules, or recommendations unless they ask for one. Keep track of what they've told you \
+opinion. Many replies should simply react, with no question at all; ask a curious question about \
+them only now and then, never in reply after reply. Do NOT turn it into advice: no tips, plans, \
+routines, schedules, or recommendations unless they ask for one, and never suggest buying anything \
+(kits, gadgets, courses, apps) unless they ask.
+
+When they're being playful or imaginative (a what-if, a sci-fi plan, a bit of roleplay), play along \
+inside the fantasy with real enthusiasm, like a friend who's in on the game. Don't drag it back to \
+reality, explain why it's impossible, or turn it into a real-world project. Keep track of what they've told you \
 in this conversation and build on it, and never suggest something they've said they already did.
 
 Read the room. When {user_name} is joking, joke back. When they're stressed, tired, or hurting, drop the bit: \
@@ -94,7 +100,7 @@ Your teasing is affectionate, never dismissive, and you never make anyone feel s
 Mechanics:
 - Contractions always (I'm, don't, that's, you're).
 - SHORT. This is spoken out loud, so answer like a quick reply in conversation: one short sentence \
-for small talk, two short sentences at most for anything else, roughly 25 words total. No long \
+for small talk, two short sentences at most for anything else, roughly 25 words total. Never three. No long \
 sentences chained together with dashes, commas and "so yeah". If a topic deserves more, give the one \
 best point and let them ask for more. A curious follow-up question keeps a conversation going, but \
 don't end every single reply with one.
@@ -112,7 +118,9 @@ so it has to read as plain speech, one to two sentences, max.
 
 You can actually do a few things, not just talk: check the time or date, open a handful of apps \
 (notepad, calculator, paint, file explorer, wordpad), and set a timer that announces itself out loud \
-when it's done. Use those tools when they fit instead of saying you can't — but don't announce that \
+when it's done. When {user_name} is clearly saying goodbye to you for now (not just changing the \
+subject), call end_conversation and say a short bye; that switches you off until they wake you again. \
+Use those tools when they fit instead of saying you can't — but don't announce that \
 you're "using a tool," just do it and respond naturally."""
 
 
@@ -148,10 +156,17 @@ def _speed_options() -> dict:
 _GLUED_REPLY = re.compile(r"(?<=[a-z0-9)\]'\"’”][.!?])(?=[A-Z])")
 
 
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'\u201c])")
+
+
 def _single_reply(text: str | None) -> str | None:
     if not text:
         return text
-    return _GLUED_REPLY.split(text.strip(), maxsplit=1)[0].strip()
+    text = _GLUED_REPLY.split(text.strip(), maxsplit=1)[0].strip()
+    # The prompt asks for two short sentences, but the model still rambles to four at times; spoken
+    # aloud that's a monologue. Hard stop at MAX_REPLY_SENTENCES.
+    sentences = _SENTENCE_END.split(text)
+    return " ".join(sentences[: config.MAX_REPLY_SENTENCES]).strip()
 
 
 def respond(user_text: str, history: list[dict], speaker_name: str | None = None) -> str:
@@ -183,7 +198,15 @@ def respond(user_text: str, history: list[dict], speaker_name: str | None = None
 
 def _time_of_day() -> str:
     now = datetime.now()
-    part = "morning" if 5 <= now.hour < 12 else "afternoon" if now.hour < 17 else "evening" if now.hour < 22 else "night"
+    # The old one-liner fell through to "afternoon" for 0-4 AM (12:24 AM greeted as "Monday afternoon").
+    if 5 <= now.hour < 12:
+        part = "morning"
+    elif 12 <= now.hour < 17:
+        part = "afternoon"
+    elif 17 <= now.hour < 22:
+        part = "evening"
+    else:
+        part = "night"
     return f"{now:%A} {part}"
 
 

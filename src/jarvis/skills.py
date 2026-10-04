@@ -4,7 +4,20 @@ import threading
 
 from . import config, tts
 
+_goodbye = threading.Event()
+
 SKILL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "end_conversation",
+            "description": (
+                "The user is clearly saying goodbye for now (e.g. saying bye, or that they're done talking). "
+                "Switches JARVIS off after this reply. Not for changing the subject or a pause."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -85,7 +98,17 @@ def _start_timer(seconds: int, label: str = "") -> str:
     return f"Timer started for {seconds} seconds{f' ({label})' if label else ''}. Will announce out loud when it's done."
 
 
+def goodbye_requested() -> bool:
+    """True once (then resets) if the model called end_conversation during the last reply."""
+    requested = _goodbye.is_set()
+    _goodbye.clear()
+    return requested
+
+
 def dispatch(name: str, arguments: dict) -> str:
+    if name == "end_conversation":
+        _goodbye.set()
+        return "Okay, switching off after you say bye."
     if name == "get_current_time":
         return _get_current_time()
     if name == "get_current_date":
