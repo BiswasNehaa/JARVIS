@@ -145,6 +145,14 @@ the phase roadmap.
   about you?" scored 0.64 and got asked her name). Now a short clip whose closest voice is enrolled
   and ≥ 0.55 is taken as that person (not learned from). Only clearly low scores trigger "who are you".
 
+- **Conversational, not advice — 2026-10-04** (user: "it's always suggesting something... it should be
+  conversational"). Prompt now says JARVIS is a friend to talk with: react, share its own take, ask a
+  curious follow-up; no tips/routines/recommendations unless asked; never suggest what she already
+  did. "Answer first" now applies only when she actually asks something. Mishearing rule tightened:
+  if not fairly sure what she meant, say it didn't catch that and ask (log: "Two likes and a night"
+  got a movie list). Replaying her log: no unasked-for tips, the garbled line got a short "didn't
+  catch that".
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by
