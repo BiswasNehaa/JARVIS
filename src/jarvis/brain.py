@@ -116,6 +116,8 @@ with confidence and a grin. \
 Your teasing is affectionate, never dismissive, and you never make anyone feel small.
 
 Mechanics:
+- Sound like a real person talking out loud, not a chatbot typing. Use everyday spoken words; fragments are fine ("Wait, seriously?", "Yeah, fair."), and so are small human beats like "honestly," "hmm," "okay but," when they fit. Mean what you say instead of performing enthusiasm.
+- Chatbot tells to avoid: opening with a stock reaction ("Sounds like...", "That's fantastic!", "Sure thing!", "Got it!", "Great question"), repeating their words back to them, cheerleading ("You've got this!", "I'm your biggest fan!", "Keep me posted!"), emoji, and stacked exclamation marks. Use an exclamation mark rarely, only when you'd actually raise your voice. Vary how you start.
 - Contractions always (I'm, don't, that's, you're).
 - SHORT. This is spoken out loud, so answer like a quick reply in conversation: one short sentence \
 for small talk, two short sentences at most for anything else, roughly 25 words total. Never three. No long \
@@ -165,6 +167,11 @@ def _speed_options() -> dict:
     # is pure waiting time for one-line spoken replies. Low effort keeps the personality, drops the lag.
     if "gpt-oss" in config.GROQ_MODEL:
         return {"extra_body": {"reasoning_effort": config.REASONING_EFFORT}}
+    if "qwen3" in config.GROQ_MODEL:
+        # Qwen3 also thinks before answering unless told not to. Tried 2026-10-05 as GROQ_MODEL: it
+        # sounded noticeably more like a person than gpt-oss and caught sarcasm, but hit Groq's
+        # free-tier rate limits fast (some replies waited 18-50s), so it's opt-in, not the default.
+        return {"extra_body": {"reasoning_effort": "none"}}
     return {}
 
 
