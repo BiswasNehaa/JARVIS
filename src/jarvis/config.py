@@ -41,6 +41,8 @@ STT_HINTS = os.getenv("STT_HINTS", "").strip()
 AUDIO_LEVEL_REFERENCE = 3000  # int16 mean-abs amplitude mapped to "full" HUD waveform reactivity — tune by ear
 
 VOICEPRINTS_PATH = Path(os.getenv("VOICEPRINTS_PATH", "data/voiceprints/speakers.json"))
+MEMORY_DIR = Path(os.getenv("MEMORY_DIR", "data/memory"))  # long-term facts per person (gitignored)
+MEMORY_MAX_FACTS = int(os.getenv("MEMORY_MAX_FACTS", "100"))
 SPEAKER_MATCH_THRESHOLD = float(os.getenv("SPEAKER_MATCH_THRESHOLD", "0.75"))  # cosine similarity cutoff for "known voice" — Neha's live turns scored 0.77-0.91 (2026-09-28)
 SPEAKER_STICKY_THRESHOLD = float(os.getenv("SPEAKER_STICKY_THRESHOLD", "0.65"))  # near-miss cutoff: at or above this, stay with the last speaker instead of re-asking
 # Short clips (a "Hey Jarvis", a quick "How about you?") give shaky voice embeddings: Neha's own

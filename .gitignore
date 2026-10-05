@@ -5,6 +5,7 @@ venv/
 .env
 data/*.db
 data/voiceprints/
+data/memory/
 *.mp3
 *.wav
 .DS_Store

@@ -4,7 +4,7 @@ from datetime import datetime
 
 from groq import Groq
 
-from . import config, skills
+from . import config, memory, skills
 
 
 def _system_prompt(user_name: str) -> str:
@@ -141,7 +141,18 @@ You can actually do a few things, not just talk: check the time or date, open a 
 when it's done. When {user_name} is clearly saying goodbye to you for now (not just changing the \
 subject), call end_conversation and say a short bye; that switches you off until they wake you again. \
 Use those tools when they fit instead of saying you can't — but don't announce that \
-you're "using a tool," just do it and respond naturally."""
+you're "using a tool," just do it and respond naturally.
+
+You have a long-term memory of {user_name}, kept between conversations. Here's everything in it:
+{memory.for_prompt(user_name)}
+Use it naturally, the way a friend just knows things about you; don't recite it or announce that \
+you remember. When {user_name} shares something that will still matter weeks from now (what they \
+like or hate, their plans, exams, goals, the people in their life, their routines, preferences \
+about how you should talk), save it with remember, written as a short standalone fact. Don't save \
+passing moods, small talk, or anything already in the list. When they ask you to remember \
+something, save it and confirm in a few words. When they ask you to forget something, or a saved \
+fact is no longer true, remove it with forget (and save the new version if there is one). If they \
+ask what you know about them, tell them from this list."""
 
 
 _client = None
@@ -196,6 +207,7 @@ def _single_reply(text: str | None) -> str | None:
 
 def respond(user_text: str, history: list[dict], speaker_name: str | None = None, tone: str = "") -> str:
     """tone: how it was said compared with how they usually sound (prosody.describe), or ""."""
+    skills.current_speaker = speaker_name or config.USER_NAME  # whose memory remember/forget touch
     system_prompt = _system_prompt(speaker_name or config.USER_NAME)
     said = f"{user_text}\n[voice: {tone}]" if tone else user_text
     messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": said}]

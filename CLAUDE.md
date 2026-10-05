@@ -160,6 +160,18 @@ the phase roadmap.
   bye-bye") quits: the model calls the `end_conversation` skill, and main speaks the bye and exits.
   Tested: "hold on, let me grab water" / "let's talk about something else" don't trigger it.
 
+- **Tone, human feel, memory — 2026-10-05** (her asks: catch sarcasm, stop sounding like a chatbot,
+  remember things). `prosody.py` compares each turn's loudness/pitch/pitch-range/pace with her usual
+  (running average, in memory per run) and passes notable differences as `[voice: ...]` after her
+  words; the prompt says judge sincere vs sarcastic vs masking a mood and answer the real meaning.
+  Prompt lists chatbot tells to avoid (stock openers, cheerleading, emoji, exclamation marks).
+  `qwen/qwen3.8-27b` sounded most human in a side-by-side but hit free-tier rate limits, so it's
+  opt-in via GROQ_MODEL. Long-term memory: `memory.py`, `data/memory/<speaker>.json` (gitignored),
+  all facts shown in the system prompt as a numbered list; the model saves/removes via the
+  `remember`/`forget` skills (forget by number). Tested: remember, recall in a new session, forget.
+  Groq also offers `whisper-large-v3-turbo` (STT) and `canopylabs/orpheus-v1-english` (expressive
+  TTS) on the free key; not tried yet.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by

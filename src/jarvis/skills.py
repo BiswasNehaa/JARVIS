@@ -2,11 +2,36 @@ import datetime
 import subprocess
 import threading
 
-from . import config, tts
+from . import config, memory, tts
 
 _goodbye = threading.Event()
+current_speaker = config.USER_NAME  # set by brain.respond before each reply
 
 SKILL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "remember",
+            "description": "Save a lasting fact about the user to long-term memory.",
+            "parameters": {
+                "type": "object",
+                "properties": {"fact": {"type": "string", "description": "A short standalone fact."}},
+                "required": ["fact"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forget",
+            "description": "Remove facts from long-term memory by their numbers in the memory list.",
+            "parameters": {
+                "type": "object",
+                "properties": {"numbers": {"type": "array", "items": {"type": "integer"}}},
+                "required": ["numbers"],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -106,6 +131,10 @@ def goodbye_requested() -> bool:
 
 
 def dispatch(name: str, arguments: dict) -> str:
+    if name == "remember":
+        return memory.add(current_speaker, arguments.get("fact", ""))
+    if name == "forget":
+        return memory.forget(current_speaker, [int(n) for n in arguments.get("numbers", [])])
     if name == "end_conversation":
         _goodbye.set()
         return "Okay, switching off after you say bye."
