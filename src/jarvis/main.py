@@ -10,7 +10,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 import numpy as np
 import webview
 
-from . import brain, config, hud, skills, speaker, stt, tts, wake_word
+from . import brain, config, hud, prosody, skills, speaker, stt, tts, wake_word
 from .audio import SAMPLE_RATE, FRAME_SAMPLES, Microphone, SpeechDetector
 
 ACTIVATING_FLASH_SECONDS = 0.35
@@ -287,6 +287,7 @@ def _warm_up() -> None:
     t = time.perf_counter()
     stt.transcribe([0] * SAMPLE_RATE)
     speaker.embed((np.random.default_rng(0).normal(0, 2000, SAMPLE_RATE * 2)).astype(np.int16).tolist())
+    prosody.warm_up()
     brain.warm_up()
     print(f"[timing] models warmed up in {time.perf_counter() - t:.1f}s")
 
@@ -542,7 +543,10 @@ def _run_voice_loop() -> None:
                     t_identified = time.perf_counter()
 
                     hud.set_state("PROCESSING")
-                    reply = brain.respond(text, history, speaker_name=speaker_name)
+                    tone = prosody.describe(samples, text, speaker_name)  # ~20ms
+                    if tone:
+                        print(f"(tone: {tone})")
+                    reply = brain.respond(text, history, speaker_name=speaker_name, tone=tone)
                     t_replied = time.perf_counter()
                     print(f"JARVIS: {reply}")
 
