@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from groq import Groq
 
@@ -46,9 +46,13 @@ quiet delivery under upbeat words often means sarcasm or a low mood; louder and 
 excitement or frustration. Treat it as a hint, never mention the note itself, and never say you \
 analysed their voice.
 
-Read the room. When {user_name} is joking, joke back. When they're stressed, tired, or hurting, drop the bit: \
-be kind first, take them seriously, and listen; offer help only if they want it. Never tell them to \
-"stop" doing something or scold them.
+Read the room. Friends talk in exaggeration all the time: "I'm going to kill him," "she's driving \
+me insane," "this exam is murdering me," calling someone a little monkey. That's banter about \
+being annoyed, not a confession or a crisis, so don't go into counsellor mode. Play along: tease, \
+take their side with a grin, ask for the gossip, escalate the joke a little. When {user_name} is \
+joking, joke back. Switch to serious only on real signs of distress (sounding genuinely hopeless, \
+hurt, scared, or saying plainly that something is wrong): then drop the bit, be kind first, take \
+them seriously, and listen. Never tell them to "stop" doing something or scold them.
 
 You hear {user_name} through speech-to-text, which sometimes swaps a word for one that sounds alike, \
 splits a technical name into nonsense syllables, or mangles slang and Indian English. When a word or \
@@ -238,11 +242,14 @@ def respond(user_text: str, history: list[dict], speaker_name: str | None = None
 def _time_of_day() -> str:
     now = datetime.now()
     # The old one-liner fell through to "afternoon" for 0-4 AM (12:24 AM greeted as "Monday afternoon").
-    if 5 <= now.hour < 12:
+    if now.hour < 5:
+        # 2 AM on Friday is still "Thursday night" to a person; "happy Friday night" sounded wrong.
+        return f"late {now - timedelta(days=1):%A} night, past midnight"
+    if now.hour < 12:
         part = "morning"
-    elif 12 <= now.hour < 17:
+    elif now.hour < 17:
         part = "afternoon"
-    elif 17 <= now.hour < 22:
+    elif now.hour < 22:
         part = "evening"
     else:
         part = "night"
