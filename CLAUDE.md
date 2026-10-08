@@ -172,6 +172,14 @@ the phase roadmap.
   Groq also offers `whisper-large-v3-turbo` (STT) and `canopylabs/orpheus-v1-english` (expressive
   TTS) on the free key; not tried yet.
 
+- **Banter — 2026-10-09** (log: "There's a boy whom I want to kill" / "he eats my brain, little
+  monkey" got counsellor mode; she: "you don't understand any sentiment"). Prompt now treats friendly
+  exaggeration as banter to play along with, lists therapist-speak as a chatbot tell, and has two
+  examples; serious mode only on real distress. gpt-oss still answers a cold-open "I want to kill
+  [someone]" with "that sounds intense" (its safety training wins), but the follow-up now teases.
+  Qwen played along on that line but returned an empty reply and hit rate limits. Greeting after
+  midnight now says "late Thursday night" rather than "Friday night".
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by
