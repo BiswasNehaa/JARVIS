@@ -20,7 +20,9 @@ TTS_VOICE = os.getenv("TTS_VOICE", "en-CA-LiamNeural")
 TTS_RATE = os.getenv("TTS_RATE", "+0%")  # e.g. "+8%" for a faster, less flat pace
 TTS_PITCH = os.getenv("TTS_PITCH", "+0Hz")  # e.g. "+15Hz" for a warmer, less monotone pitch
 
-MAX_COMMAND_SECONDS = 25  # hard cap, in case you never go quiet (roomy, since pauses to think are allowed)
+# Past this much talking, JARVIS stops at your next breath instead of waiting for a full pause; it
+# never cuts you off mid-word. 25s cut long stories off mid-sentence (2026-10-23).
+MAX_COMMAND_SECONDS = int(os.getenv("MAX_COMMAND_SECONDS", "60"))
 NO_SPEECH_TIMEOUT_SECONDS = 6  # give up if you never start talking after the wake word
 # After JARVIS answers it keeps listening this long for a follow-up, no "Hey Jarvis" needed;
 # silence for this long ends the conversation. Set to 0 to require the wake word every time.

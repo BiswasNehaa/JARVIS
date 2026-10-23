@@ -95,6 +95,18 @@ the phase roadmap.
   (never below 1.3x the room noise); `SILENCE_RMS_THRESHOLD` is env-overridable and the [timing]
   line shows `loudest` next to the threshold for tuning.
 
+- **Test-run leftovers — 2026-10-23** (her log after the fix above). (1) A long story hit the 25s
+  cap mid-sentence and its STT took 15.5s: `MAX_COMMAND_SECONDS` 25 → 60 (env), and past it the
+  recording stops at the next quiet frame, not mid-word (hard stop at 2x). Whisper runs at
+  `temperature=0.0` only; the default fallback re-decoded long clips at higher temperatures.
+  (2) "Digger" (Tom Cruise film) came out "Ticker"/"D-Gud"/"D-Gir" even after she spelled it:
+  `memory.learn_spelled_words()` saves any letter-by-letter spelling to
+  `data/memory/<speaker>_words.json`, and those words go at the end of the Whisper prompt and into
+  the brain's prompt. (3) The brain invented a film ("The Signal") and cinema, and offered to check
+  showtimes: prompt now says unknown titles are probably newer than its training (say so, ask),
+  never invent names/places, never offer to look things up, and recommend only when asked.
+  Not yet confirmed live.
+
 - **Latency pass — 2026-09-28** (user reported 30-40s per reply). Main suspect: the fixed
   `SILENCE_RMS_THRESHOLD=300` sat below room/fan noise, so recordings rarely detected silence and ran
   to the 25s cap. Now `audio.SpeechDetector` learns the room's noise floor from idle frames and also

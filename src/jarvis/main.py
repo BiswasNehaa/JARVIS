@@ -10,7 +10,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 import numpy as np
 import webview
 
-from . import brain, config, hud, prosody, skills, speaker, stt, tts, wake_word
+from . import brain, config, hud, memory, prosody, skills, speaker, stt, tts, wake_word
 from .audio import SAMPLE_RATE, FRAME_SAMPLES, Microphone, SpeechDetector
 
 ACTIVATING_FLASH_SECONDS = 0.35
@@ -76,8 +76,6 @@ def _record_command(
     frame_index = -1
     while True:
         frame_index += 1
-        if speech_started and frame_index - speech_start_index >= MAX_FRAMES:
-            break  # stop_reason stays "max length"
         frame = pending.popleft() if pending else mic.read_frame()
         samples.extend(frame.tolist())
 
@@ -91,8 +89,12 @@ def _record_command(
             speech_started = True
             silent_frames = 0
             check_is_current = False
+            if frame_index - speech_start_index >= 2 * MAX_FRAMES:
+                break  # never paused at all: hard stop
         elif speech_started:
             silent_frames += 1
+            if frame_index - speech_start_index >= MAX_FRAMES:
+                break  # talked past MAX_COMMAND_SECONDS: stop at this breath; stop_reason stays "max length"
             if silent_frames >= MAX_SILENCE_HANG_FRAMES:
                 stop_reason = "long pause"
                 break
@@ -464,7 +466,9 @@ def _run_voice_loop() -> None:
                     t_start = time.perf_counter()
                     enroll_seconds = 0.0  # the "what's your name?" exchange is a conversation, not lag
                     # What's been said so far helps Whisper hear the same words right the next time.
-                    stt_context = stt.conversation_prompt(history, last_speaker_name or config.USER_NAME)
+                    stt_context = stt.conversation_prompt(
+                        history, last_speaker_name or config.USER_NAME, memory.words(last_speaker_name or config.USER_NAME)
+                    )
                     samples = _record_command(
                         mic,
                         no_speech_seconds=config.FOLLOW_UP_SECONDS if follow_up else None,
@@ -493,6 +497,8 @@ def _run_voice_loop() -> None:
                             continue  # a cough or a door mid-conversation shouldn't end it
                         break
                     print(f"You: {text}")
+                    for word in memory.learn_spelled_words(last_speaker_name or config.USER_NAME, text):
+                        print(f"(learned the word: {word})")
 
                     if wake_word.is_goodbye(text):
                         _quit(last_speaker_name or config.USER_NAME)

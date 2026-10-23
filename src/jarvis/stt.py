@@ -26,7 +26,7 @@ FILLER_PROMPT = "Umm, let me think, like, hmm... Okay, so, uh, here's what I'm, 
 CONTEXT_PROMPT_CHARS = 400  # Whisper only reads ~224 tokens of prompt; keep the most recent part
 
 
-def conversation_prompt(history: list[dict], speaker_name: str) -> str:
+def conversation_prompt(history: list[dict], speaker_name: str, words: list[str] | None = None) -> str:
     """The last few lines of the conversation, written like a transcript. Whisper treats its prompt
     as "the text just before this audio", so words already said (a library, a name, a place) are
     spelled and heard correctly when they come up again instead of turning into sound-alikes."""
@@ -37,7 +37,10 @@ def conversation_prompt(history: list[dict], speaker_name: str) -> str:
     ]
     if config.STT_HINTS:
         lines.insert(0, config.STT_HINTS)
-    return " ".join(lines)[-CONTEXT_PROMPT_CHARS:]
+    # Words spelled out earlier go last, so they always survive the cut (the conversation itself may
+    # hold the misheard versions).
+    vocabulary = f"Words: {', '.join(words)}." if words else ""
+    return " ".join(lines)[-(CONTEXT_PROMPT_CHARS - len(vocabulary)):] + (" " + vocabulary if vocabulary else "")
 
 
 def transcribe(pcm_samples: list[int], keep_fillers: bool = False, context: str = "") -> str:
@@ -50,6 +53,9 @@ def transcribe(pcm_samples: list[int], keep_fillers: bool = False, context: str 
         beam_size=1,
         vad_filter=True,
         condition_on_previous_text=False,
+        # No retries at higher temperatures. When a long recording "failed" Whisper's quality checks,
+        # each retry re-decoded it: a 25s turn took 15.5s to transcribe and came back garbled.
+        temperature=0.0,
         initial_prompt=" ".join(p for p in (context, FILLER_PROMPT if keep_fillers else "") if p) or None,
     )
     return " ".join(segment.text.strip() for segment in segments).strip()

@@ -52,6 +52,38 @@ def forget(speaker: str, numbers: list[int]) -> str:
     return f"Forgot {len(drop)} thing{'s' if len(drop) > 1 else ''}."
 
 
+# A word spelled out letter by letter, as Whisper writes it: "D-I-G-G-E-R", "D I G G E R", "D.I.G.G.E.R."
+_SPELLED = re.compile(r"(?<![A-Za-z'’])[A-Za-z](?:[-‐‑.\s]{1,2}[A-Za-z](?![A-Za-z])){3,}")
+MAX_WORDS = 50
+
+
+def _words_path(speaker: str) -> Path:
+    return _path(speaker).with_name(_path(speaker).stem + "_words.json")
+
+
+def words(speaker: str) -> list[str]:
+    """Names and titles this person has spelled out, so Whisper and the brain get them right next time."""
+    try:
+        return json.loads(_words_path(speaker).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+
+
+def learn_spelled_words(speaker: str, text: str) -> list[str]:
+    """Save any word spelled out letter by letter in `text`. Returns the newly learned words."""
+    known = words(speaker)
+    learned = []
+    for match in _SPELLED.finditer(text):
+        word = "".join(re.findall(r"[A-Za-z]", match.group())).capitalize()
+        if word.lower() not in (w.lower() for w in known + learned):
+            learned.append(word)
+    if learned:
+        path = _words_path(speaker)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps((known + learned)[-MAX_WORDS:], indent=2, ensure_ascii=False), encoding="utf-8")
+    return learned
+
+
 def for_prompt(speaker: str) -> str:
     facts = load(speaker)
     if not facts:
