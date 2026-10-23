@@ -1,6 +1,8 @@
 import asyncio
 import os
 import re
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -52,14 +54,69 @@ def _split_for_speech(text: str) -> list[str]:
     return chunks
 
 
-def _synthesize_to_file(text: str) -> str:
-    fd, path = tempfile.mkstemp(suffix=".mp3")
+# edge-tts is an unofficial client for Microsoft's online voices, and Microsoft sometimes changes the
+# handshake: then every request fails with "403 Invalid response status" until edge-tts is upgraded
+# (pip install -U edge-tts). So JARVIS doesn't go mute when that happens, it falls back to the
+# Windows built-in voice (offline, robotic, but it talks) and retries edge-tts after a cool-off.
+EDGE_RETRY_SECONDS = 300
+_edge_failed_at: float | None = None
+
+# Windows' own speech engine (System.Speech, ships with Windows), driven through PowerShell so it
+# needs no extra package and no COM setup on JARVIS's worker threads.
+_WINDOWS_TTS_SCRIPT = (
+    "Add-Type -AssemblyName System.Speech;"
+    "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer;"
+    "try { $s.SelectVoiceByHints([System.Speech.Synthesis.VoiceGender]::Male) } catch {};"
+    "$s.Rate = 1;"
+    "$s.SetOutputToWaveFile($env:JARVIS_TTS_OUT);"
+    "$s.Speak((Get-Content -Raw -Encoding UTF8 $env:JARVIS_TTS_IN));"
+    "$s.Dispose()"
+)
+
+
+def _synthesize_windows(text: str) -> str:
+    if sys.platform != "win32":
+        raise RuntimeError("no fallback voice outside Windows")
+    fd, text_path = tempfile.mkstemp(suffix=".txt")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    fd, path = tempfile.mkstemp(suffix=".wav")
     os.close(fd)
-    asyncio.run(_synthesize(text, path))
+    try:
+        subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", _WINDOWS_TTS_SCRIPT],
+            env={**os.environ, "JARVIS_TTS_IN": text_path, "JARVIS_TTS_OUT": path},
+            check=True, capture_output=True, timeout=30,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception:
+        os.remove(path)
+        raise
+    finally:
+        os.remove(text_path)
     return path
 
 
-PLAYBACK_RATE = 24000  # edge-tts's native rate
+def _synthesize_to_file(text: str) -> str:
+    global _edge_failed_at
+    if _edge_failed_at is None or time.monotonic() - _edge_failed_at > EDGE_RETRY_SECONDS:
+        fd, path = tempfile.mkstemp(suffix=".mp3")
+        os.close(fd)
+        try:
+            asyncio.run(_synthesize(text, path))
+            if os.path.getsize(path) > 0:
+                _edge_failed_at = None
+                return path
+            raise RuntimeError("edge-tts returned no audio")
+        except Exception as exc:  # noqa: BLE001 - any edge-tts failure: speak with the fallback voice
+            os.remove(path)
+            if _edge_failed_at is None:
+                print(f"(edge-tts failed: {exc}; using the Windows voice. Fix: pip install -U edge-tts)")
+            _edge_failed_at = time.monotonic()
+    return _synthesize_windows(text)
+
+
+PLAYBACK_RATE = 24000  # edge-tts's native rate (the fallback voice's wav is resampled to it)
 PLAYBACK_BLOCK = 1200  # 50ms: how quickly interrupt() takes effect
 
 _interrupt = threading.Event()

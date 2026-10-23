@@ -70,6 +70,7 @@ def _record_command(
     check_is_current = False  # False once you start talking again after that check was started
     _last_recording.pop("text", None)
     pending = deque(first_frames or [])
+    loudest = 0.0
 
     speech_start_index = 0
     frame_index = -1
@@ -81,6 +82,7 @@ def _record_command(
         samples.extend(frame.tolist())
 
         amplitude = np.abs(frame).mean()
+        loudest = max(loudest, amplitude)
         hud.set_audio_level(min(1.0, amplitude / config.AUDIO_LEVEL_REFERENCE))
 
         if _speech.is_speech(frame):
@@ -114,6 +116,7 @@ def _record_command(
         _last_recording["text"] = check.result()
     _last_recording["stop_reason"] = stop_reason
     _last_recording["seconds"] = len(samples) / SAMPLE_RATE
+    _last_recording["loudest"] = loudest
     return samples
 
 
@@ -265,7 +268,7 @@ def _log_timing(
     rec = _last_recording
     parts = [
         f"record {t_recorded - t_start:.1f}s (stopped by {rec.get('stop_reason')}, "
-        f"{rec.get('seconds', 0):.1f}s audio, speech threshold {_speech.threshold:.0f})"
+        f"{rec.get('seconds', 0):.1f}s audio, loudest {rec.get('loudest', 0):.0f}, speech threshold {_speech.threshold:.0f})"
     ]
     parts.append(f"stt {t_transcribed - t_recorded:.2f}s")
     if t_identified is not None:
@@ -425,6 +428,7 @@ def _run_voice_loop() -> None:
             wake_audio = wake_word.recent_audio()
             goodbye_check = _background.submit(wake_word.said_goodbye, wake_audio)
             wake_embedding = _background.submit(speaker.embed, wake_audio)
+            _speech.observe_voice(wake_audio)
             # Clear the wake-word model now. It still held "Hey Jarvis", so while the first reply was
             # spoken the stop-listener saw the wake word again and cut JARVIS off before its first
             # word: the reply printed but was never said, then the conversation timed out.

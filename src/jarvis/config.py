@@ -27,7 +27,10 @@ NO_SPEECH_TIMEOUT_SECONDS = 6  # give up if you never start talking after the wa
 FOLLOW_UP_SECONDS = float(os.getenv("FOLLOW_UP_SECONDS", "600"))  # 10 min: stays open until "Bye Jarvis" or a long quiet spell
 SILENCE_HANG_MS = int(os.getenv("SILENCE_HANG_MS", "1200"))  # after this much quiet, stop IF what you said sounds like a finished sentence
 MAX_SILENCE_HANG_MS = int(os.getenv("MAX_SILENCE_HANG_MS", "3500"))  # stop after this much quiet no matter what (a pause to think mid-sentence fits under it)
-SILENCE_RMS_THRESHOLD = 300  # minimum int16 amplitude for speech; raised automatically in noisy rooms (audio.SpeechDetector)
+# Minimum int16 amplitude for speech. Raised automatically in noisy rooms, and lowered automatically
+# to match how loud your "Hey Jarvis" was (audio.SpeechDetector). If it still cuts you off with
+# "no speech", compare "loudest" in the [timing] line with "speech threshold" and set this lower.
+SILENCE_RMS_THRESHOLD = int(os.getenv("SILENCE_RMS_THRESHOLD", "300"))
 # webrtcvad (installed via webrtcvad-wheels) must also hear a voice, so steady fan/hum noise can't
 # keep a recording open until MAX_COMMAND_SECONDS. 0-3, higher = stricter.
 VAD_AGGRESSIVENESS = int(os.getenv("VAD_AGGRESSIVENESS", "2"))

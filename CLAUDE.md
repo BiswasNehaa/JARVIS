@@ -87,6 +87,14 @@ the phase roadmap.
   SPEAKING-state audio reactivity) were moved to GitHub issues #1-#3 instead of tracking here —
   explicit user request to park design-level work and move to code-level Phase 3.
 
+- **Mute + "no speech" fix — 2026-10-23.** edge-tts started failing with "403 Invalid response
+  status" (Microsoft changed its handshake; fixed in edge-tts 7.3.1, now pinned `>=7.3.1`), so JARVIS
+  never spoke. tts.py now falls back to the Windows built-in voice and retries edge-tts every 5 min.
+  Separately, recordings kept ending "no speech" at threshold 300: a quiet mic never reached it.
+  `SpeechDetector.observe_voice()` now caps the threshold at 35% of how loud the wake phrase was
+  (never below 1.3x the room noise); `SILENCE_RMS_THRESHOLD` is env-overridable and the [timing]
+  line shows `loudest` next to the threshold for tuning.
+
 - **Latency pass — 2026-09-28** (user reported 30-40s per reply). Main suspect: the fixed
   `SILENCE_RMS_THRESHOLD=300` sat below room/fan noise, so recordings rarely detected silence and ran
   to the 25s cap. Now `audio.SpeechDetector` learns the room's noise floor from idle frames and also
@@ -224,7 +232,8 @@ src/jarvis/
   stt.py         faster-whisper transcription
   brain.py       Groq API call (GPT-OSS 120B) + JARVIS system prompt/personality
   speaker.py     resemblyzer voice embeddings + voiceprint matching/enrollment (Phase 3)
-  tts.py         edge-tts synthesis + playback (markdown/emoji stripped before speaking)
+  tts.py         edge-tts synthesis + playback (markdown/emoji stripped before speaking); falls back
+                 to the Windows System.Speech voice when edge-tts fails (e.g. 403 from Microsoft)
   hud.py         pywebview window hosting hud/index.html + set_state() JS bridge; `python -m
                  src.jarvis.hud` still runs it standalone as a demo-cycle visual test
   main.py        orchestrates the voice loop AND drives the HUD live via hud.set_state() at each

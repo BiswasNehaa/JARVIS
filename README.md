@@ -58,9 +58,12 @@ change (see the commented-out lines in `.env.example`).
 2. Create a virtual environment and install dependencies:
    ```
    python -m venv .venv
-   .venv\Scripts\activate
+   .venv\Scripts\Activate.ps1
    pip install -r requirements.txt
    ```
+   That activation line is for PowerShell; in Command Prompt use `.venv\Scripts\activate.bat`.
+   If PowerShell refuses to run the script, allow it once with
+   `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 3. Get a free Groq API key at https://console.groq.com/keys (no credit card).
 4. Copy `.env.example` to `.env` and paste in the key.
 5. Download the wake-word model once (openWakeWord doesn't bundle it in the pip package):

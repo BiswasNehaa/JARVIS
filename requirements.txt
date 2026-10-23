@@ -3,7 +3,7 @@ openwakeword
 onnxruntime
 sounddevice
 faster-whisper
-edge-tts
+edge-tts>=7.3.1  # older versions get "403 Invalid response status" from Microsoft's voice service
 python-dotenv
 numpy
 pywebview
