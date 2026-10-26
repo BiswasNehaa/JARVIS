@@ -38,6 +38,9 @@ SILENCE_RMS_THRESHOLD = int(os.getenv("SILENCE_RMS_THRESHOLD", "300"))
 VAD_AGGRESSIVENESS = int(os.getenv("VAD_AGGRESSIVENESS", "2"))
 # base.en: ~0.7s per check on this laptop. small.en hears accents and technical words noticeably
 # better but takes ~2.3s, which adds about 1.5s to every reply (measured 2026-09-30).
+# Wake-word scores at or above this get a Whisper double-check (see wake_word.py). Lower it if
+# "Hello Jarvis" still takes several tries; the "(wake check: ...)" lines show how close misses came.
+WAKE_NEAR_MISS_THRESHOLD = float(os.getenv("WAKE_NEAR_MISS_THRESHOLD", "0.05"))
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base.en")
 # Optional words you use a lot that Whisper keeps mishearing (names, courses, libraries), written
 # as a sentence, e.g. "Talking about college, Python and machine learning." Empty by default.
@@ -49,7 +52,14 @@ VOICEPRINTS_PATH = Path(os.getenv("VOICEPRINTS_PATH", "data/voiceprints/speakers
 MEMORY_DIR = Path(os.getenv("MEMORY_DIR", "data/memory"))  # long-term facts per person (gitignored)
 MEMORY_MAX_FACTS = int(os.getenv("MEMORY_MAX_FACTS", "100"))
 SPEAKER_MATCH_THRESHOLD = float(os.getenv("SPEAKER_MATCH_THRESHOLD", "0.75"))  # cosine similarity cutoff for "known voice" — Neha's live turns scored 0.77-0.91 (2026-09-28)
-SPEAKER_STICKY_THRESHOLD = float(os.getenv("SPEAKER_STICKY_THRESHOLD", "0.65"))  # near-miss cutoff: at or above this, stay with the last speaker instead of re-asking
+# Near-miss cutoff: at or above this, a voice is taken as the closest enrolled speaker instead of
+# asking who it is. Was 0.65, but a friend talking after Neha scored 0.58-0.74 and was taken as her.
+SPEAKER_STICKY_THRESHOLD = float(os.getenv("SPEAKER_STICKY_THRESHOLD", "0.70"))
+# Within one conversation (same mic, same room, same day) a person's sentences sound much more alike
+# than against a voiceprint built over weeks. A sentence at least this close to someone's earlier
+# sentences in this conversation is them; one this far from everyone, with no strong voiceprint
+# match either, is a new voice and gets asked its name.
+SPEAKER_SAME_CONVERSATION_THRESHOLD = float(os.getenv("SPEAKER_SAME_CONVERSATION_THRESHOLD", "0.72"))
 # Short clips (a "Hey Jarvis", a quick "How about you?") give shaky voice embeddings: Neha's own
 # scored 0.58-0.70 on them while her full sentences score 0.75-0.91. For those, being the closest
 # enrolled voice with at least this score is enough; asking "who are you?" needs a clearly low score.

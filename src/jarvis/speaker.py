@@ -42,7 +42,7 @@ def _save_profiles(profiles: dict[str, list[list[float]]]) -> None:
     config.VOICEPRINTS_PATH.write_text(json.dumps(profiles, indent=2))
 
 
-def _voiceprint(samples: list[list[float]]) -> np.ndarray:
+def normalized_mean(samples) -> np.ndarray:
     centroid = np.mean(samples, axis=0)
     return centroid / np.linalg.norm(centroid)
 
@@ -52,7 +52,7 @@ def best_match(embedding: np.ndarray) -> tuple[str | None, float]:
     the threshold — the caller decides, so near misses can be logged and weighed."""
     best_name, best_score = None, -1.0
     for name, samples in _load_profiles().items():
-        score = float(np.dot(embedding, _voiceprint(samples)))
+        score = float(np.dot(embedding, normalized_mean(samples)))
         if score > best_score:
             best_name, best_score = name, score
     return best_name, best_score

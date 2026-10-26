@@ -200,6 +200,21 @@ the phase roadmap.
   Qwen played along on that line but returned an empty reply and hit rate limits. Greeting after
   midnight now says "late Thursday night" rather than "Friday night".
 
+- **Wake word + new voices — 2026-10-26** (her report: "Hello Jarvis" took 6-7 tries; a friend
+  talking after her was taken as Neha). (1) Indian-English "Hello Jarvis" (edge-tts Neerja/Prabhat
+  with noise added) peaks at only 0.12-0.43 in the wake model, under the old 0.15 cutoff for the
+  Whisper double-check, and "Hello" alone could trigger that check before "Jarvis" was said, after
+  which the audio was thrown away. Now `WAKE_NEAR_MISS_THRESHOLD`=0.05 (env), the wait restarts
+  while the score is still up, and the audio is kept after a miss: 14/18 noisy tries caught vs 7-9,
+  0 false wakes over 107s of other speech (13 extra Whisper checks). `(wake check: ...)` lines log
+  near misses. (2) Mid-conversation, any weak match used to stay with the last speaker.
+  `main._who_is_speaking` now also compares each sentence with that conversation's earlier
+  sentences per person (`SPEAKER_SAME_CONVERSATION_THRESHOLD`=0.72): a synthetic friend scored
+  0.50 against Neha's clips, her own clips 0.89-0.92. `SPEAKER_STICKY_THRESHOLD` 0.65 → 0.70 (only
+  used when nobody has spoken a long sentence yet this conversation; may re-ask her name on an off
+  first turn). A wake phrase below 0.40 asks who it is even right after someone else spoke.
+  Not yet confirmed live.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by

@@ -219,6 +219,54 @@ MIN_SPEAKER_UTTERANCE_SECONDS = 1.5  # below this, resemblyzer embeddings are to
 SHORT_UTTERANCE_SECONDS = 4.0  # below this, a weak match never triggers "what's your name?" for a known speaker
 
 
+def _who_is_speaking(
+    embedding: np.ndarray, short: bool, last_speaker_name: str | None, conversation_voices: dict[str, list[np.ndarray]]
+) -> str | None:
+    """Who said this sentence, or None for a new voice (then JARVIS asks their name).
+
+    The voiceprint alone can't tell an off turn of Neha's from a friend: her own sentences have
+    scored 0.64-0.70 against it and a friend's 0.58-0.74. What separates them is how she sounded
+    earlier in this same conversation, so that's checked before any near miss is accepted. (This
+    used to stay with the last speaker on any weak match mid-conversation, so a friend joining in
+    was always taken as Neha.)
+    """
+    best_name, score = speaker.best_match(embedding)
+    if best_name is not None and score >= config.SPEAKER_MATCH_THRESHOLD:
+        print(f"(recognized voice: {best_name}, {score:.2f})")
+        # Keep learning from confident matches so the voiceprint tracks how you actually sound
+        # day to day, not just the enrollment clips.
+        speaker.enroll(best_name, [embedding])
+        return best_name
+
+    # How close this sentence is to each person's earlier sentences in this conversation.
+    heard_before = {name: float(np.dot(embedding, speaker.normalized_mean(clips))) for name, clips in conversation_voices.items()}
+    closest = max(heard_before, key=heard_before.get) if heard_before else None
+    if closest is not None and heard_before[closest] >= config.SPEAKER_SAME_CONVERSATION_THRESHOLD:
+        print(f"(same voice as {closest} earlier in this conversation, {heard_before[closest]:.2f}; voiceprint {score:.2f})")
+        return closest
+    # Near misses aren't learned from, so they can't drag a voiceprint off.
+    if best_name is not None and best_name not in heard_before:
+        # No sentence of theirs in this conversation to compare with: the voiceprint decides. Asking
+        # Neha her name on an off first turn is what made JARVIS "forget" her every run.
+        if score >= config.SPEAKER_STICKY_THRESHOLD:
+            print(f"(near match, assuming {best_name}, {score:.2f})")
+            return best_name
+        if short and score >= config.SPEAKER_SHORT_CLIP_THRESHOLD:
+            # Short clips score low even for the right person (Neha's "How about you?" scored 0.64).
+            print(f"(short phrase, closest voice {best_name}, {score:.2f})")
+            return best_name
+    if short and closest is not None and heard_before[closest] >= config.SPEAKER_SAME_CONVERSATION_THRESHOLD - 0.12:
+        # A short phrase too shaky to call a new voice; asking mid-conversation costs ~14s.
+        print(f"(short phrase, probably still {closest}, {heard_before[closest]:.2f}; voiceprint {score:.2f})")
+        return closest
+    if short and not heard_before and last_speaker_name:
+        print(f"(short phrase, weak match {score:.2f}, staying with {last_speaker_name})")
+        return last_speaker_name
+    others = ", ".join(f"{name} {s:.2f}" for name, s in heard_before.items())
+    print(f"(new voice? voiceprint best {best_name} {score:.2f}" + (f"; this conversation: {others}" if others else "") + " - asking for a name)")
+    return None
+
+
 def _extract_name(text: str) -> str:
     """Pull a name out of the answer to "what's your name?" — falls back to config.USER_NAME
     rather than storing a mistranscribed sentence (or a misheard filler word) as a permanent
@@ -351,25 +399,25 @@ def _greet(mic: Microphone, wake_embedding: Future, last_speaker_name: str | Non
     if best_name is not None and score >= config.SPEAKER_SHORT_CLIP_THRESHOLD:
         print(f"(wake phrase sounds like {best_name}, {score:.2f})")
         name, ask_who = best_name, False
-    elif last_speaker_name:
-        name, ask_who = last_speaker_name, False
     elif best_name is None or score < config.SPEAKER_UNKNOWN_THRESHOLD:
+        # Asked even right after someone else spoke: before, a friend saying "Hello Jarvis" just
+        # after Neha was greeted as Neha.
         print(f"(wake phrase voice not recognized — best {best_name}, {score:.2f})")
         name, ask_who = None, True
     else:
-        name, ask_who = None, False
+        name, ask_who = None, False  # unsure: a plain hi, and the first real sentence settles it
 
     hud.set_state("PROCESSING")
     text = _take_greeting(name, ask_who)
     if not text:
-        return None, name
+        return None, name or last_speaker_name
     print(f"JARVIS: {text}")
     hud.set_state("SPEAKING")
     if ask_who:
         return None, _enroll_new_speaker(mic, None, question=text)
     tts.speak(text)
     mic.drain()  # its own voice, picked up by the mic
-    return None, name
+    return None, name or last_speaker_name
 
 
 def _quit(name: str) -> None:
@@ -440,6 +488,7 @@ def _run_voice_loop() -> None:
             # answers toward what was said earlier instead of what was just asked.
             if history and time.monotonic() - last_turn_at > config.HISTORY_RESET_SECONDS:
                 history.clear()
+            conversation_voices: dict[str, list[np.ndarray]] = {}  # who said what in this conversation
             hud.show_window()
             hud.set_state("ACTIVATING")
             time.sleep(ACTIVATING_FLASH_SECONDS)
@@ -511,44 +560,15 @@ def _run_voice_loop() -> None:
                         speaker_name = last_speaker_name or config.USER_NAME
                     else:
                         embedding = embedding_future.result()
-                        best_name, score = speaker.best_match(embedding)
-                        if best_name is not None and score >= config.SPEAKER_MATCH_THRESHOLD:
-                            speaker_name = best_name
-                            print(f"(recognized voice: {speaker_name}, {score:.2f})")
-                            # Keep learning from confident matches so the voiceprint tracks how you
-                            # actually sound day to day, not just the enrollment clips.
-                            speaker.enroll(speaker_name, [embedding])
-                        elif best_name is not None and score >= config.SPEAKER_STICKY_THRESHOLD:
-                            # A near miss is almost always the enrolled person on an off turn: Neha's
-                            # own saved samples score as low as 0.69 against her voiceprint, while
-                            # other voices tested (2026-09-28) topped out at 0.67. Asking her name here
-                            # is what made JARVIS "forget" her on the first turn of every run.
-                            # Near misses aren't learned from, so they can't drag the voiceprint off.
-                            speaker_name = best_name
-                            print(f"(near match, assuming still {speaker_name}, {score:.2f})")
-                        elif (
-                            best_name is not None
-                            and score >= config.SPEAKER_SHORT_CLIP_THRESHOLD
-                            and len(samples) < SHORT_UTTERANCE_SECONDS * SAMPLE_RATE
-                        ):
-                            # A short phrase whose closest voice is still a known speaker. Short clips
-                            # score low even for the right person (Neha's "How about you?" scored 0.64
-                            # and got "who are you?"), so this isn't a reason to ask. Not learned from.
-                            speaker_name = best_name
-                            print(f"(short phrase, closest voice {speaker_name}, {score:.2f})")
-                        elif last_speaker_name and (
-                            follow_up or len(samples) < SHORT_UTTERANCE_SECONDS * SAMPLE_RATE
-                        ):
-                            # Short phrases ("How about you?") and mid-conversation follow-ups give
-                            # shaky embeddings (Neha scored 0.65 on one); asking her name there cost
-                            # 14s and broke the flow. Only a confident match to someone else switches.
-                            speaker_name = last_speaker_name
-                            print(f"(weak match {score:.2f}, staying with {speaker_name} mid-conversation)")
-                        else:
-                            print(f"(voice not recognized — best {best_name}, {score:.2f} — asking for a name)")
+                        speaker_name = _who_is_speaking(
+                            embedding, len(samples) < SHORT_UTTERANCE_SECONDS * SAMPLE_RATE,
+                            last_speaker_name, conversation_voices,
+                        )
+                        if speaker_name is None:
                             t_enroll = time.perf_counter()
                             speaker_name = _enroll_new_speaker(mic, samples)
                             enroll_seconds = time.perf_counter() - t_enroll
+                        conversation_voices.setdefault(speaker_name, []).append(embedding)
                     last_speaker_name = speaker_name
                     t_identified = time.perf_counter()
 
