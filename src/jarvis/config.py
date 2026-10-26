@@ -55,11 +55,10 @@ SPEAKER_MATCH_THRESHOLD = float(os.getenv("SPEAKER_MATCH_THRESHOLD", "0.75"))  #
 # Near-miss cutoff: at or above this, a voice is taken as the closest enrolled speaker instead of
 # asking who it is. Was 0.65, but a friend talking after Neha scored 0.58-0.74 and was taken as her.
 SPEAKER_STICKY_THRESHOLD = float(os.getenv("SPEAKER_STICKY_THRESHOLD", "0.70"))
-# Within one conversation (same mic, same room, same day) a person's sentences sound much more alike
-# than against a voiceprint built over weeks. A sentence at least this close to someone's earlier
-# sentences in this conversation is them; one this far from everyone, with no strong voiceprint
-# match either, is a new voice and gets asked its name.
-SPEAKER_SAME_CONVERSATION_THRESHOLD = float(os.getenv("SPEAKER_SAME_CONVERSATION_THRESHOLD", "0.72"))
+# Mid-conversation, a weak match counts as the same person only if it's within this much of how
+# they scored earlier in the conversation. In a classroom test Neha scored 0.77 then 0.74; her
+# friend 0.65 and 0.69 against Neha's voiceprint.
+SPEAKER_CONVERSATION_DROP = float(os.getenv("SPEAKER_CONVERSATION_DROP", "0.06"))
 # Short clips (a "Hey Jarvis", a quick "How about you?") give shaky voice embeddings: Neha's own
 # scored 0.58-0.70 on them while her full sentences score 0.75-0.91. For those, being the closest
 # enrolled voice with at least this score is enough; asking "who are you?" needs a clearly low score.

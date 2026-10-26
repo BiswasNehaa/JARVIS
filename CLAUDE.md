@@ -208,12 +208,16 @@ the phase roadmap.
   while the score is still up, and the audio is kept after a miss: 14/18 noisy tries caught vs 7-9,
   0 false wakes over 107s of other speech (13 extra Whisper checks). `(wake check: ...)` lines log
   near misses. (2) Mid-conversation, any weak match used to stay with the last speaker.
-  `main._who_is_speaking` now also compares each sentence with that conversation's earlier
-  sentences per person (`SPEAKER_SAME_CONVERSATION_THRESHOLD`=0.72): a synthetic friend scored
-  0.50 against Neha's clips, her own clips 0.89-0.92. `SPEAKER_STICKY_THRESHOLD` 0.65 → 0.70 (only
-  used when nobody has spoken a long sentence yet this conversation; may re-ask her name on an off
-  first turn). A wake phrase below 0.40 asks who it is even right after someone else spoke.
-  Not yet confirmed live.
+  First fix compared clips with each other within the conversation; her classroom log the same day
+  showed that fails (friend, also a girl, scored 0.78-0.89 against Neha's clips: same mic, same room
+  noise). What did separate them was the voiceprint drop: Neha 0.77/0.74, friend 0.65/0.69. So
+  `main._who_is_speaking` now remembers each person's confident (≥0.75) scores in this conversation,
+  and a long sentence more than `SPEAKER_CONVERSATION_DROP` (0.06) below that is a new voice → ask
+  its name (short phrases stay put). `SPEAKER_STICKY_THRESHOLD` 0.65 → 0.70 (only used before anyone
+  has a confident turn this conversation; may re-ask her name on an off first turn). A wake phrase
+  below 0.40 asks who it is even right after someone else spoke. Not yet confirmed live.
+  Speed in that log: WAIT 1.9-4.4s; edge-tts first audio grew 1.1s → 3.8s (internet), and classroom
+  chatter kept recordings open (a one-line question recorded 28s).
 
 ## Current status
 

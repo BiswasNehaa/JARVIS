@@ -220,15 +220,16 @@ SHORT_UTTERANCE_SECONDS = 4.0  # below this, a weak match never triggers "what's
 
 
 def _who_is_speaking(
-    embedding: np.ndarray, short: bool, last_speaker_name: str | None, conversation_voices: dict[str, list[np.ndarray]]
+    embedding: np.ndarray, short: bool, last_speaker_name: str | None, conversation_scores: dict[str, list[float]]
 ) -> str | None:
     """Who said this sentence, or None for a new voice (then JARVIS asks their name).
 
-    The voiceprint alone can't tell an off turn of Neha's from a friend: her own sentences have
-    scored 0.64-0.70 against it and a friend's 0.58-0.74. What separates them is how she sounded
-    earlier in this same conversation, so that's checked before any near miss is accepted. (This
-    used to stay with the last speaker on any weak match mid-conversation, so a friend joining in
-    was always taken as Neha.)
+    A weak voiceprint match on its own can't tell an off turn of Neha's from a friend's: her own
+    sentences have scored 0.64-0.70 and a friend's 0.58-0.74. What separates them is the drop from
+    how she scored earlier in the same conversation. In a classroom (2026-10-26) Neha scored 0.77 and
+    0.74, her friend 0.65 and 0.69. Comparing the clips with each other didn't work there: the friend
+    scored 0.78-0.89 against Neha's clips (same mic, same room noise), so that check was dropped.
+    conversation_scores: each person's confident voiceprint scores so far in this conversation.
     """
     best_name, score = speaker.best_match(embedding)
     if best_name is not None and score >= config.SPEAKER_MATCH_THRESHOLD:
@@ -236,34 +237,36 @@ def _who_is_speaking(
         # Keep learning from confident matches so the voiceprint tracks how you actually sound
         # day to day, not just the enrollment clips.
         speaker.enroll(best_name, [embedding])
+        conversation_scores.setdefault(best_name, []).append(score)
         return best_name
 
-    # How close this sentence is to each person's earlier sentences in this conversation.
-    heard_before = {name: float(np.dot(embedding, speaker.normalized_mean(clips))) for name, clips in conversation_voices.items()}
-    closest = max(heard_before, key=heard_before.get) if heard_before else None
-    if closest is not None and heard_before[closest] >= config.SPEAKER_SAME_CONVERSATION_THRESHOLD:
-        print(f"(same voice as {closest} earlier in this conversation, {heard_before[closest]:.2f}; voiceprint {score:.2f})")
-        return closest
     # Near misses aren't learned from, so they can't drag a voiceprint off.
-    if best_name is not None and best_name not in heard_before:
-        # No sentence of theirs in this conversation to compare with: the voiceprint decides. Asking
-        # Neha her name on an off first turn is what made JARVIS "forget" her every run.
-        if score >= config.SPEAKER_STICKY_THRESHOLD:
-            print(f"(near match, assuming {best_name}, {score:.2f})")
+    earlier = conversation_scores.get(best_name)
+    if earlier:
+        usual = float(np.mean(earlier))
+        if score >= usual - config.SPEAKER_CONVERSATION_DROP:
+            print(f"(near match, {best_name} {score:.2f}, close to their {usual:.2f} earlier in this conversation)")
             return best_name
-        if short and score >= config.SPEAKER_SHORT_CLIP_THRESHOLD:
-            # Short clips score low even for the right person (Neha's "How about you?" scored 0.64).
-            print(f"(short phrase, closest voice {best_name}, {score:.2f})")
+        if short:
+            # Too shaky to call a new voice from one short phrase; asking costs ~14s.
+            print(f"(short phrase, {best_name} {score:.2f} vs {usual:.2f} earlier, staying with {best_name})")
             return best_name
-    if short and closest is not None and heard_before[closest] >= config.SPEAKER_SAME_CONVERSATION_THRESHOLD - 0.12:
-        # A short phrase too shaky to call a new voice; asking mid-conversation costs ~14s.
-        print(f"(short phrase, probably still {closest}, {heard_before[closest]:.2f}; voiceprint {score:.2f})")
-        return closest
-    if short and not heard_before and last_speaker_name:
+        print(f"(new voice? {best_name} {score:.2f}, but they scored {usual:.2f} earlier in this conversation - asking for a name)")
+        return None
+
+    # Nothing confident from them yet this conversation: the voiceprint alone decides. Asking Neha
+    # her name on an off first turn is what made JARVIS "forget" her every run.
+    if best_name is not None and score >= config.SPEAKER_STICKY_THRESHOLD:
+        print(f"(near match, assuming {best_name}, {score:.2f})")
+        return best_name
+    if best_name is not None and short and score >= config.SPEAKER_SHORT_CLIP_THRESHOLD:
+        # Short clips score low even for the right person (Neha's "How about you?" scored 0.64).
+        print(f"(short phrase, closest voice {best_name}, {score:.2f})")
+        return best_name
+    if short and last_speaker_name:
         print(f"(short phrase, weak match {score:.2f}, staying with {last_speaker_name})")
         return last_speaker_name
-    others = ", ".join(f"{name} {s:.2f}" for name, s in heard_before.items())
-    print(f"(new voice? voiceprint best {best_name} {score:.2f}" + (f"; this conversation: {others}" if others else "") + " - asking for a name)")
+    print(f"(voice not recognized - best {best_name}, {score:.2f} - asking for a name)")
     return None
 
 
@@ -488,7 +491,7 @@ def _run_voice_loop() -> None:
             # answers toward what was said earlier instead of what was just asked.
             if history and time.monotonic() - last_turn_at > config.HISTORY_RESET_SECONDS:
                 history.clear()
-            conversation_voices: dict[str, list[np.ndarray]] = {}  # who said what in this conversation
+            conversation_scores: dict[str, list[float]] = {}  # how each voice matched in this conversation
             hud.show_window()
             hud.set_state("ACTIVATING")
             time.sleep(ACTIVATING_FLASH_SECONDS)
@@ -562,13 +565,12 @@ def _run_voice_loop() -> None:
                         embedding = embedding_future.result()
                         speaker_name = _who_is_speaking(
                             embedding, len(samples) < SHORT_UTTERANCE_SECONDS * SAMPLE_RATE,
-                            last_speaker_name, conversation_voices,
+                            last_speaker_name, conversation_scores,
                         )
                         if speaker_name is None:
                             t_enroll = time.perf_counter()
                             speaker_name = _enroll_new_speaker(mic, samples)
                             enroll_seconds = time.perf_counter() - t_enroll
-                        conversation_voices.setdefault(speaker_name, []).append(embedding)
                     last_speaker_name = speaker_name
                     t_identified = time.perf_counter()
 
