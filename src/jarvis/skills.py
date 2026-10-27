@@ -38,7 +38,8 @@ SKILL_SCHEMAS = [
             "name": "end_conversation",
             "description": (
                 "The user is clearly saying goodbye for now (e.g. saying bye, or that they're done talking). "
-                "Switches JARVIS off after this reply. Not for changing the subject or a pause."
+                "Switches JARVIS off after this reply. Not for changing the subject or a pause, and never "
+                "for greetings (hi, hello, even repeated many times), complaints, or nonsense."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
