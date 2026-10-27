@@ -262,10 +262,32 @@ def _single_reply(text: str | None) -> str | None:
     return " ".join(sentences[: config.MAX_REPLY_SENTENCES]).strip()
 
 
+_NO_QUESTION_NOTE = """
+
+Your last reply ended with a question, so this reply must not ask anything: end on a statement."""
+
+
+def _asked_last_time(history: list[dict]) -> bool:
+    last = next((m for m in reversed(history) if m.get("role") == "assistant"), None)
+    return bool(last and (last.get("content") or "").rstrip().endswith("?"))
+
+
+def _without_trailing_question(text: str | None) -> str | None:
+    # Backstop for the note above: her 2026-10-27 log had seven replies in a row ending in a
+    # coaching question ("If you could pick one tiny skill...?"), which she found draining.
+    if not text or not text.rstrip().endswith("?"):
+        return text
+    sentences = _SENTENCE_END.split(text.strip())
+    return " ".join(sentences[:-1]).strip() if len(sentences) > 1 else text
+
+
 def respond(user_text: str, history: list[dict], speaker_name: str | None = None, tone: str = "") -> str:
     """tone: how it was said compared with how they usually sound (prosody.describe), or ""."""
     skills.current_speaker = speaker_name or config.USER_NAME  # whose memory remember/forget touch
     system_prompt = _system_prompt(speaker_name or config.USER_NAME)
+    no_question = _asked_last_time(history)
+    if no_question:
+        system_prompt += _NO_QUESTION_NOTE
     said = f"{user_text}\n[voice: {tone}]" if tone else user_text
     messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": said}]
     client = _get_client()
@@ -281,7 +303,8 @@ def respond(user_text: str, history: list[dict], speaker_name: str | None = None
         )
         message = response.choices[0].message
         if not message.tool_calls:
-            return _single_reply(message.content)
+            reply = _single_reply(message.content)
+            return _without_trailing_question(reply) if no_question else reply
 
         messages.append(message.model_dump(exclude_none=True))
         for call in message.tool_calls:
