@@ -219,6 +219,18 @@ the phase roadmap.
   Speed in that log: WAIT 1.9-4.4s; edge-tts first audio grew 1.1s → 3.8s (internet), and classroom
   chatter kept recordings open (a one-line question recorded 28s).
 
+- **Iron Man JARVIS, not a life coach — 2026-10-27** (her log: every reply ended in a coaching
+  question, "such a depressing AI"; she asked about fine-tuning). Answer given: not yet, the prompt
+  was the cause (most of its own example replies ended in a question). Persona is now the films'
+  JARVIS: dry, deadpan, quietly devoted, replacing the Tom Cruise framing (no-pet-names and
+  read-the-room rules kept). Replies end on statements; reflective questions are banned; when she's
+  stuck on something real it gives one concrete move in one sentence. Code backstop: if the last
+  reply ended in "?", the next one is told not to ask and a trailing question is dropped. Replay of
+  her log: 1/8 replies ended in a question (was 8/8). The prompt is ~3.8k tokens, so back-to-back
+  calls hit Groq's free-tier tokens-per-minute limit (25-30s waits in testing, ~1s when spaced like
+  real speech); her one 10s brain turn was likely that. Fine-tuning stays a later option if prompt
+  work stops being enough. Not yet confirmed live.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by
