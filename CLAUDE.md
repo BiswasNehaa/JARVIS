@@ -231,6 +231,13 @@ the phase roadmap.
   real speech); her one 10s brain turn was likely that. Fine-tuning stays a later option if prompt
   work stops being enough. Not yet confirmed live.
 
+- **Auto-shutdown — 2026-11-11** (she left it running 2 hours with the mic off). While waiting for
+  the wake word, `main._IdleWatch` says a short bye and exits after `IDLE_SHUTDOWN_MINUTES` (30) with
+  no wake word, after `MIC_DEAD_SECONDS` (180) of exact-zero audio (muted mic; her live mic never
+  goes below ~60 even in a quiet room), or when the mic stops delivering frames for 10s / raises
+  (watchdog thread). Env-configurable, 0 disables. Exits JARVIS only, never the laptop. Tested with
+  fake frames; not yet confirmed live.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by
