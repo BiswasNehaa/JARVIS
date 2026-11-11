@@ -24,6 +24,16 @@ TTS_PITCH = os.getenv("TTS_PITCH", "+0Hz")  # e.g. "+15Hz" for a warmer, less mo
 # never cuts you off mid-word. 25s cut long stories off mid-sentence (2026-10-23).
 MAX_COMMAND_SECONDS = int(os.getenv("MAX_COMMAND_SECONDS", "60"))
 NO_SPEECH_TIMEOUT_SECONDS = 6  # give up if you never start talking after the wake word
+# Auto-shutdown (2026-11-11: left running 2 hours with the mic off, nothing happened). While
+# waiting for "Hey Jarvis", JARVIS says bye and exits after IDLE_SHUTDOWN_MINUTES without a wake
+# word, after MIC_DEAD_SECONDS of the mic sending pure silence (muted / privacy switch off), or
+# soon after the mic stops working altogether (unplugged). 0 turns that timer off.
+IDLE_SHUTDOWN_MINUTES = float(os.getenv("IDLE_SHUTDOWN_MINUTES", "30"))
+# A muted mic sends exact zeros; a live one always picks up some hiss. Some mics noise-gate a
+# silent room to zero too, so this waits a few minutes rather than seconds.
+MIC_DEAD_SECONDS = float(os.getenv("MIC_DEAD_SECONDS", "180"))
+MIC_DEAD_LEVEL = 1  # loudest int16 sample in a frame at or below this counts as dead air
+MIC_STALL_SECONDS = 10.0  # waiting for the wake word and no audio arrives at all for this long: the mic is gone
 # After JARVIS answers it keeps listening this long for a follow-up, no "Hey Jarvis" needed;
 # silence for this long ends the conversation. Set to 0 to require the wake word every time.
 FOLLOW_UP_SECONDS = float(os.getenv("FOLLOW_UP_SECONDS", "600"))  # 10 min: stays open until "Bye Jarvis" or a long quiet spell

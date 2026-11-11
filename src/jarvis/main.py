@@ -423,15 +423,75 @@ def _greet(mic: Microphone, wake_embedding: Future, last_speaker_name: str | Non
     return None, name or last_speaker_name
 
 
-def _quit(name: str) -> None:
+def _quit(name: str, line: str | None = None) -> None:
     """"Bye Jarvis": say goodbye and exit the whole program, HUD included."""
     print("(goodbye — shutting down)")
     hud.set_state("SPEAKING")
     try:
-        tts.speak(f"Bye, {name}.")
+        tts.speak(line or f"Bye, {name}.")
     finally:
         hud.hide_window()
         os._exit(0)
+
+
+_shutdown_lock = threading.Lock()
+
+
+def _auto_shutdown(reason: str, line: str) -> None:
+    """Nobody's talking to JARVIS (or can't, the mic is off): say why and exit, instead of sitting
+    there for hours. Only exits JARVIS, never the laptop."""
+    if not _shutdown_lock.acquire(blocking=False):
+        threading.Event().wait()  # the watchdog and the voice loop both noticed; the other one is saying bye
+    print(f"({reason} — shutting down)", flush=True)
+    hud.show_window()
+    _quit(config.USER_NAME, line)
+
+
+class _IdleWatch:
+    """Tracks the wait for the wake word, to shut down when it goes on too long or the mic is dead.
+
+    The voice loop calls frame() for every frame it reads while waiting. A watchdog thread covers
+    the case where reading itself hangs (mic unplugged mid-read), which the loop can't notice."""
+
+    def __init__(self) -> None:
+        self.waiting = False
+        self._idle_since = time.monotonic()
+        self._quiet_since: float | None = None
+        self._last_frame_at = time.monotonic()
+
+    def start_waiting(self) -> None:
+        now = time.monotonic()
+        self._idle_since = self._last_frame_at = now
+        self._quiet_since = None
+        self.waiting = True
+
+    def frame(self, frame: np.ndarray) -> None:
+        now = time.monotonic()
+        self._last_frame_at = now
+        if int(np.abs(frame).max()) <= config.MIC_DEAD_LEVEL:
+            self._quiet_since = self._quiet_since or now
+        else:
+            self._quiet_since = None
+        if config.MIC_DEAD_SECONDS > 0 and self._quiet_since is not None \
+                and now - self._quiet_since >= config.MIC_DEAD_SECONDS:
+            _auto_shutdown(
+                f"no sound from the mic for {config.MIC_DEAD_SECONDS:.0f}s, looks muted",
+                "Your microphone seems to be off, so I'm shutting down. Bye.",
+            )
+        if config.IDLE_SHUTDOWN_MINUTES > 0 and now - self._idle_since >= config.IDLE_SHUTDOWN_MINUTES * 60:
+            _auto_shutdown(
+                f"no wake word for {config.IDLE_SHUTDOWN_MINUTES:g} min",
+                "It's been quiet for a while, so I'm shutting down. Bye.",
+            )
+
+    def watchdog(self) -> None:
+        while True:
+            time.sleep(1.0)
+            if self.waiting and time.monotonic() - self._last_frame_at >= config.MIC_STALL_SECONDS:
+                _auto_shutdown(
+                    f"no audio from the mic for {config.MIC_STALL_SECONDS:.0f}s",
+                    "I can't hear anything from your microphone, so I'm shutting down. Bye.",
+                )
 
 
 def _quit_on_ctrl_c() -> None:
@@ -469,12 +529,21 @@ def _run_voice_loop() -> None:
     print('Say "Bye Jarvis" or press Ctrl+C to quit.')
     hud.set_state("IDLE")
 
+    idle = _IdleWatch()
+    threading.Thread(target=idle.watchdog, daemon=True, name="idle-watchdog").start()
     with Microphone() as mic:
+        idle.start_waiting()
         while True:
-            frame = mic.read_frame()
+            try:
+                frame = mic.read_frame()
+            except Exception as exc:  # noqa: BLE001 - mic unplugged or switched off mid-run
+                _auto_shutdown(f"microphone stopped working: {exc}",
+                               "I've lost the microphone, so I'm shutting down. Bye.")
+            idle.frame(frame)
             if not wake_word.detected(model, frame):
                 _speech.observe_background(frame)
                 continue
+            idle.waiting = False
 
             # The wake-word model mostly listens for "Jarvis", so "Bye Jarvis" can trigger it too.
             # Check which one it was while the popup opens; the mic keeps buffering meanwhile.
@@ -614,6 +683,7 @@ def _run_voice_loop() -> None:
             hud.hide_window()
             mic.drain()
             wake_word.reset(model)
+            idle.start_waiting()  # the idle clock restarts after every conversation
 
 
 def main() -> None:
