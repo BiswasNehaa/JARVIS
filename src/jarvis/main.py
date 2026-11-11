@@ -217,6 +217,14 @@ NON_NAME_WORDS = {
 
 MIN_SPEAKER_UTTERANCE_SECONDS = 1.5  # below this, resemblyzer embeddings are too unstable to trust
 SHORT_UTTERANCE_SECONDS = 4.0  # below this, a weak match never triggers "what's your name?" for a known speaker
+SHORT_UTTERANCE_WORDS = 6  # fewer words than this counts as short too, however long the recording ran
+
+
+def _is_short_utterance(samples, text: str) -> bool:
+    """Too little speech to judge a voice by. Recording length alone isn't enough: her "Yeah,
+    maybe." (2026-11-11) ran 6.2s with the pauses around it, scored 0.71 against her 0.90 earlier,
+    and JARVIS asked her name mid-conversation. Two words of audio can't carry a voiceprint."""
+    return len(samples) < SHORT_UTTERANCE_SECONDS * SAMPLE_RATE or len(text.split()) < SHORT_UTTERANCE_WORDS
 
 
 def _who_is_speaking(
@@ -633,7 +641,7 @@ def _run_voice_loop() -> None:
                     else:
                         embedding = embedding_future.result()
                         speaker_name = _who_is_speaking(
-                            embedding, len(samples) < SHORT_UTTERANCE_SECONDS * SAMPLE_RATE,
+                            embedding, _is_short_utterance(samples, text),
                             last_speaker_name, conversation_scores,
                         )
                         if speaker_name is None:

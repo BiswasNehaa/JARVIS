@@ -238,6 +238,17 @@ the phase roadmap.
   (watchdog thread). Env-configurable, 0 disables. Exits JARVIS only, never the laptop. Tested with
   fake frames; not yet confirmed live.
 
+- **Venting, not homework — 2026-11-11** (her log: she said she felt lost after weeks off studying and
+  got a productivity tip every turn: timers, sprints, "consistency beats perfection"; "I didn't like how
+  he talked"). Prompt: when she's venting, be heard-first (name what she said, why it makes sense, take
+  the weight off, gentle humour), back her own plan instead of adding steps, and suggest something only
+  when she asks what to do, at most once per conversation. Also: a "short" utterance for speaker checks
+  is now < 4s OR < 6 words (her "Yeah, maybe." ran 6.2s, scored 0.71 and got asked her name);
+  `[No response needed]`-style bracket tags are stripped before speaking; "I'll do it" about a plan no
+  longer counts as a goodbye (replay caught it calling end_conversation); a "training"→"trending"
+  example in the mishearing rule. Replay of her log: no tips until she asked how to rank things, no
+  shutdown, no train joke. Not yet confirmed live.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by

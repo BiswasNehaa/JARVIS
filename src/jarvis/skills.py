@@ -39,7 +39,9 @@ SKILL_SCHEMAS = [
             "description": (
                 "The user is clearly saying goodbye for now (e.g. saying bye, or that they're done talking). "
                 "Switches JARVIS off after this reply. Not for changing the subject or a pause, and never "
-                "for greetings (hi, hello, even repeated many times), complaints, or nonsense."
+                "for greetings (hi, hello, even repeated many times), complaints, or nonsense. Also not "
+                "when they say they'll do something or try something (\"okay, I'll do it\", \"I'll try "
+                "that\"): that's them talking about a plan, not leaving. Only an actual bye counts."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
