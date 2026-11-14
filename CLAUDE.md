@@ -273,6 +273,15 @@ the phase roadmap.
   a short owning-it line. Replay: no invented plot, no shutdown until "bye". She still finds the
   overall voice generic; asked her which style she wants (2026-11-15).
 
+- **New voice, her pick — 2026-11-15.** Shown four sample replies (dry butler / playful best friend /
+  warm and a bit flirty / chill and short like texting), she chose "C and D both". The persona is no
+  longer the films' dry JARVIS: it's a friend who's a little sweet on her, warm, light flirting,
+  casual, texting-short (one sentence usually, under 20 words, fragments and "ugh"/"okay" fine).
+  All the rules stay (no pet names, no coaching, venting = listen, no invented plots/spoilers).
+  Examples and the greeting persona were rewritten to match. Replay of her last three chats: short,
+  casual, no invented plot. This supersedes the 2026-10-27 "Iron Man JARVIS" persona. Not yet
+  confirmed live.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by
