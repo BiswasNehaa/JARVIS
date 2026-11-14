@@ -261,6 +261,18 @@ the phase roadmap.
   (her 50s record was ~35s of waiting + 15s of talking); the doubled/cut banner in her paste isn't in
   the code (printed once), likely a terminal copy artifact. Not yet confirmed live.
 
+- **Spoilers, invented plots, false shutdowns — 2026-11-14** (her late-night log). (1) "Don't give me
+  spoilers" made the model call `end_conversation` and JARVIS quit. `brain._sounds_like_leaving()` now
+  requires a goodbye word in her own words (bye, good night, see you, talk later, have to go...)
+  before that skill counts; otherwise the model is told to carry on. (2) Greeting at 12:48 AM was
+  "Hi Neha, good night": the greeting cue now bans "good night" (a goodbye) and stating the clock
+  ("still up?" instead). (3) Asked how VisionQuest ended (newer than its training), it invented a
+  whole plot, which was also a spoiler: prompt now says an unknown show has an unknown plot, never
+  describe it, and no spoilers for things she hasn't finished unless she asks; plus an example.
+  (4) Stiff apologies ("My bad, I overstepped", "Apologies for the spoiler slip") banned in favour of
+  a short owning-it line. Replay: no invented plot, no shutdown until "bye". She still finds the
+  overall voice generic; asked her which style she wants (2026-11-15).
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by

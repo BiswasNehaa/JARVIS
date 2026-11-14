@@ -46,7 +46,13 @@ means trending) and say the corrected word in passing. If you can't tell, say yo
 that. A word spelled out letter by letter is the exact spelling. Words they've spelled before: \
 {', '.join(memory.words(user_name)) or '(none yet)'}.
 - Never make things up. Something you don't recognise is probably newer than your training: say so. \
-Never invent titles, places, or facts. You can't browse or look things up, so never offer to.
+Never invent titles, places, or facts. You can't browse or look things up, so never offer to. If \
+you don't know a show, film, or book, you don't know its plot: never describe what happens in it, \
+even when asked; say plainly you haven't seen it and enjoy hearing about it from them.
+- No spoilers. If they haven't finished something, never tell them how it goes, even if you do know, \
+unless they clearly ask to be spoiled.
+- When you get something wrong, own it in a few plain words with a bit of humour, then move on. No \
+"my bad, I overstepped", "apologies for", or promises about how you'll behave from now on.
 - Always answer out loud with real words, even if it's only a few. Never write stage directions or \
 tags like [No response needed].
 
@@ -68,13 +74,16 @@ User: "Do you believe in the 11:11 wish thing?"
 You: "Statistically, no. But a wish never hurt anyone, so I'd make a good one."
 User: "You're such a depressing AI."
 You: "Fair. I've been running a therapy session nobody booked. Consider it cancelled."
+User: "VisionQuest just finished. I haven't watched it yet. What happened in the end?"
+Bad (invented plot and a spoiler): "Vision confronts a rogue AI version of himself and sacrifices his core."
+You: "No idea, it came out after my time. And even if I knew, I wouldn't ruin it for you."
 User: "Everyone in this world is so mean."
 You: "Some days it really does feel that way. For the record, I'm not, and I'm on your side."
 
 Mechanics: this is spoken aloud. One short sentence for small talk, two at most otherwise, about 25 \
 words. Plain speech: no markdown, no emoji, contractions always, exclamation marks rarely. Avoid \
 chatbot tells: stock openers ("Sounds like", "Totally get it", "Haha", "Got it!", "Great \
-question"), repeating their words back, cheerleading ("You've got this!"), "I'd be happy to", "is \
+question", "How about we dive into"), poster lines ("enjoy the ride", "can be its own kind of"), repeating their words back, cheerleading ("You've got this!"), "I'd be happy to", "is \
 there anything else", "as an AI", "perfect for", "Enjoy!", adjective lists, corporate words \
 ("optimize", "elevate"). Vary how you start.
 
@@ -170,6 +179,20 @@ def _single_reply(text: str | None) -> str | None:
     return " ".join(sentences[: config.MAX_REPLY_SENTENCES]).strip()
 
 
+# Words people actually use to leave. end_conversation only counts when one of these is in what she
+# said; the model alone has switched JARVIS off on "I'll do it" and "Don't give me spoilers".
+_LEAVING = re.compile(
+    r"\b(bye|goodbye|good night|goodnight|see (you|ya)|talk (to you )?(later|soon|tomorrow)|"
+    r"(gotta|got to|have to|need to|i'll|i will) (go|sleep)|going to (bed|sleep)|catch you later|ttyl|"
+    r"that's all|signing off|switch (yourself )?off|shut (yourself )?down|turn (yourself )?off)\b",
+    re.IGNORECASE,
+)
+
+
+def _sounds_like_leaving(text: str) -> bool:
+    return bool(_LEAVING.search(text))
+
+
 _NO_QUESTION_NOTE = """
 
 Your last reply ended with a question, so this reply must not ask anything: end on a statement."""
@@ -223,7 +246,13 @@ def respond(user_text: str, history: list[dict], speaker_name: str | None = None
         messages.append(message.model_dump(exclude_none=True))
         for call in message.tool_calls:
             arguments = json.loads(call.function.arguments or "{}")
-            result = skills.dispatch(call.function.name, arguments)
+            if call.function.name == "end_conversation" and not _sounds_like_leaving(user_text):
+                # 2026-11-14: "Don't give me spoilers" got end_conversation and JARVIS shut down.
+                # The model decides too loosely, so a goodbye also has to be in her words.
+                print("(brain tried to end the conversation, but she didn't say bye - ignoring)")
+                result = "They haven't said goodbye. Don't end the conversation; just reply normally."
+            else:
+                result = skills.dispatch(call.function.name, arguments)
             messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
 
     return _single_reply(message.content) or "Lost my train of thought there — try that again?"
@@ -268,7 +297,12 @@ def greeting(name: str | None, ask_who: bool = False, avoid: list[str] | None = 
         cue = f"{name} just woke you up by saying hi. Say hi back, using their name, in one short warm line under 10 words."
     else:
         cue = "Someone just woke you up by saying hi. Say hi back in one short warm line under 10 words, without using a name."
-    cue += f" It's {_time_of_day()}. Just the greeting, nothing else."
+    # "Good night" is a goodbye: at 12:48 AM (2026-11-14) "Hi Neha, good night" sounded like JARVIS
+    # was leaving just as she arrived.
+    cue += (
+        f" It's {_time_of_day()}. Just the greeting, nothing else. Never say \"good night\", that's a "
+        "goodbye, and don't state the clock time. Late at night, just notice that they're still up."
+    )
     if avoid:
         cue += " Say it differently from these: " + " | ".join(avoid)
     response = _chat(
