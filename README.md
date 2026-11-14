@@ -109,6 +109,7 @@ All optional, set in `.env`:
 |---|---|---|
 | `USER_NAME` | `Neha` | Your name, used before your voice is enrolled |
 | `GROQ_MODEL` | `openai/gpt-oss-120b` | The brain. `qwen/qwen3.8-27b` sounds more natural but hits free-tier rate limits faster |
+| `GROQ_FALLBACK_MODEL` | `openai/gpt-oss-20b` | Answers instantly when `GROQ_MODEL` hits the free tier's per-minute limit, instead of waiting ~15s for it to reset. Empty disables it |
 | `TTS_VOICE`, `TTS_RATE`, `TTS_PITCH` | `en-CA-LiamNeural`, `+0%`, `+0Hz` | The voice ([browse voices](https://speech.microsoft.com/portal/voicegallery)) |
 | `FOLLOW_UP_SECONDS` | `600` | How long a conversation stays open with nobody talking (0 = wake word every time) |
 | `MAX_REPLY_SENTENCES` | `3` | Replies are cut after this many sentences |

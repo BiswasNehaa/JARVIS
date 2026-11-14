@@ -117,6 +117,9 @@ def _record_command(
         # Audio after the check was all silence, so its transcript covers the whole recording.
         _last_recording["text"] = check.result()
     _last_recording["stop_reason"] = stop_reason
+    # Time spent waiting for you to start talking. "record" in the [timing] line includes it, so a
+    # 50s record with 15s of audio (2026-11-14) was 35s of thinking before speaking, not a stuck mic.
+    _last_recording["lead_seconds"] = speech_start_index * FRAME_MS / 1000 if speech_started else 0.0
     _last_recording["seconds"] = len(samples) / SAMPLE_RATE
     _last_recording["loudest"] = loudest
     return samples
@@ -328,8 +331,8 @@ def _log_timing(
     moment you stop talking (end of recording) to JARVIS's first word coming out of the speaker."""
     rec = _last_recording
     parts = [
-        f"record {t_recorded - t_start:.1f}s (stopped by {rec.get('stop_reason')}, "
-        f"{rec.get('seconds', 0):.1f}s audio, loudest {rec.get('loudest', 0):.0f}, speech threshold {_speech.threshold:.0f})"
+        f"record {t_recorded - t_start:.1f}s (waited {rec.get('lead_seconds', 0):.1f}s for you to start, "
+        f"stopped by {rec.get('stop_reason')}, {rec.get('seconds', 0):.1f}s audio, loudest {rec.get('loudest', 0):.0f}, speech threshold {_speech.threshold:.0f})"
     ]
     parts.append(f"stt {t_transcribed - t_recorded:.2f}s")
     if t_identified is not None:

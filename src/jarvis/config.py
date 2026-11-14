@@ -8,6 +8,9 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+# Used the moment GROQ_MODEL hits the free tier's per-minute token limit, instead of waiting it out.
+# It has its own allowance. Empty disables the fallback.
+GROQ_FALLBACK_MODEL = os.getenv("GROQ_FALLBACK_MODEL", "openai/gpt-oss-20b")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.4"))  # Groq defaults to 1.0: vaguer answers, even made-up titles
 # How much conversation JARVIS remembers: the last HISTORY_TURNS exchanges, forgotten entirely when
 # you wake it again after HISTORY_RESET_SECONDS of quiet. Long histories dilute the current question.

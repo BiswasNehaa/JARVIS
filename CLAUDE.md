@@ -249,6 +249,18 @@ the phase roadmap.
   example in the mishearing rule. Replay of her log: no tips until she asked how to rank things, no
   shutdown, no train joke. Not yet confirmed live.
 
+- **Brain waits were Groq's rate limit, not her network — 2026-11-14** (log: brain 12-16s on most
+  turns, ~1.5s on others; she suspected slow internet). Groq's free tier gives gpt-oss-120b 8,000
+  tokens/minute and the prompt was ~4,400 tokens, so every second turn hit a 429 and the Groq SDK
+  silently waited ~15s to retry (headers: `x-ratelimit-limit-tokens 8000`). Fixes: the system prompt
+  was rewritten to ~1,500 tokens (same rules, fewer examples; comment at its top says keep it small),
+  greetings use a tiny persona prompt instead of the full one, and `brain._chat` sends a 429 straight
+  to `GROQ_FALLBACK_MODEL` (`openai/gpt-oss-20b`, its own 8k allowance) with no wait. Replay of her
+  log: 0.5-4s per reply, fallback used on the last two. Also: an empty reply gets one nudge and then
+  "Go on, I'm listening." instead of silence; `[timing]` now shows how long it waited for her to start
+  (her 50s record was ~35s of waiting + 15s of talking); the doubled/cut banner in her paste isn't in
+  the code (printed once), likely a terminal copy artifact. Not yet confirmed live.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by
