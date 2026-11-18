@@ -282,6 +282,13 @@ the phase roadmap.
   casual, no invented plot. This supersedes the 2026-10-27 "Iron Man JARVIS" persona. Not yet
   confirmed live.
 
+- **Autonomous agent plan — 2026-11-18** (plan only, nothing built yet): `docs/AGENT_PLAN.md`. JARVIS
+  stays Neha's own personal agent, not open source. Talk stays on Groq; big multi-step jobs will go to
+  Claude Code run locally (`claude -p`) under her own Claude plan login, no Anthropic API key (too
+  expensive for her). Small one-step actions (open app, timer) stay on Groq for speed. Risky steps go
+  to an approval inbox (idea from a friend's agent). First step is M0: unit tests + brain evals on
+  today's JARVIS, no behaviour change.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by
