@@ -26,7 +26,9 @@ TTS_PITCH = os.getenv("TTS_PITCH", "+0Hz")  # e.g. "+15Hz" for a warmer, less mo
 # Past this much talking, JARVIS stops at your next breath instead of waiting for a full pause; it
 # never cuts you off mid-word. 25s cut long stories off mid-sentence (2026-10-23).
 MAX_COMMAND_SECONDS = int(os.getenv("MAX_COMMAND_SECONDS", "60"))
-NO_SPEECH_TIMEOUT_SECONDS = 6  # give up if you never start talking after the wake word
+# Give up if you never start talking after the wake word (and its hello). Was 6s: on 2026-11-20
+# JARVIS said hi, Neha took a moment, and the popup closed by itself before she spoke.
+NO_SPEECH_TIMEOUT_SECONDS = float(os.getenv("NO_SPEECH_TIMEOUT_SECONDS", "20"))
 # Auto-shutdown (2026-11-11: left running 2 hours with the mic off, nothing happened). While
 # waiting for "Hey Jarvis", JARVIS says bye and exits after IDLE_SHUTDOWN_MINUTES without a wake
 # word, after MIC_DEAD_SECONDS of the mic sending pure silence (muted / privacy switch off), or
