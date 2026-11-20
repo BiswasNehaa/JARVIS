@@ -66,6 +66,16 @@ def identify(embedding: np.ndarray) -> str | None:
     return None
 
 
+def unlearn(name: str, embedding: np.ndarray) -> None:
+    """Take a sample back out of name's voiceprint: it was someone else ("I'm not Neha")."""
+    profiles = _load_profiles()
+    target = embedding / np.linalg.norm(embedding)
+    kept = [s for s in profiles.get(name, []) if float(np.dot(s, target)) < 0.9999]
+    if name in profiles and len(kept) != len(profiles[name]):
+        profiles[name] = kept
+        _save_profiles(profiles)
+
+
 def enroll(name: str, embeddings: list[np.ndarray]) -> None:
     """Add sample embeddings to `name`'s voiceprint, creating it if needed. Adds rather than
     replaces: re-enrolling after a missed match used to overwrite a speaker's whole voiceprint

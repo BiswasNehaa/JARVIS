@@ -78,6 +78,9 @@ SPEAKER_CONVERSATION_DROP = float(os.getenv("SPEAKER_CONVERSATION_DROP", "0.06")
 # enrolled voice with at least this score is enough; asking "who are you?" needs a clearly low score.
 SPEAKER_SHORT_CLIP_THRESHOLD = float(os.getenv("SPEAKER_SHORT_CLIP_THRESHOLD", "0.55"))
 SPEAKER_UNKNOWN_THRESHOLD = float(os.getenv("SPEAKER_UNKNOWN_THRESHOLD", "0.40"))  # wake phrase below this: greet and ask who it is
+# Only matches this sure are added to someone's voiceprint. Learning from every match >= 0.75 let a
+# friend's 0.75-0.80 turns slip into Neha's voiceprint, which then matched friends more easily still.
+SPEAKER_LEARN_THRESHOLD = float(os.getenv("SPEAKER_LEARN_THRESHOLD", "0.82"))
 SPEAKER_MAX_SAMPLES = 30  # voice samples kept per speaker (oldest dropped first) — more samples, steadier voiceprint
 STOP_PHRASES = (  # said mid-command, ends the turn immediately instead of going to the brain
     "stop session",

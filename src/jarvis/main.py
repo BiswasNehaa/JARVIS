@@ -246,9 +246,10 @@ def _who_is_speaking(
     best_name, score = speaker.best_match(embedding)
     if best_name is not None and score >= config.SPEAKER_MATCH_THRESHOLD:
         print(f"(recognized voice: {best_name}, {score:.2f})")
-        # Keep learning from confident matches so the voiceprint tracks how you actually sound
-        # day to day, not just the enrollment clips.
-        speaker.enroll(best_name, [embedding])
+        # Keep learning from sure matches so the voiceprint tracks how you actually sound day to
+        # day, not just the enrollment clips. Not from borderline ones: see SPEAKER_LEARN_THRESHOLD.
+        if score >= config.SPEAKER_LEARN_THRESHOLD:
+            speaker.enroll(best_name, [embedding])
         conversation_scores.setdefault(best_name, []).append(score)
         return best_name
 
@@ -280,6 +281,43 @@ def _who_is_speaking(
         return last_speaker_name
     print(f"(voice not recognized - best {best_name}, {score:.2f} - asking for a name)")
     return None
+
+
+_CLAIMED_NAME = re.compile(r"\b(?:i'?m|i am|my name is|this is|it'?s|call me)\s+(?!not\b)([a-z]+)", re.IGNORECASE)
+
+
+def _not_me_correction(text: str, name: str) -> str | None:
+    """"I'm not Neha" / "this isn't Neha, it's Priya": JARVIS took a friend for name. Returns the
+    friend's name if they said it, "" if they only said who they're not, None if no correction."""
+    correction = re.search(rf"\b(?:not|isn'?t|ain'?t)\s+{re.escape(name)}\b", text, re.IGNORECASE)
+    if not correction:
+        return None
+    for match in _CLAIMED_NAME.finditer(text[correction.end():]):
+        claimed = match.group(1).lower()
+        if claimed not in NON_NAME_WORDS and claimed != name.lower():
+            return claimed.capitalize()
+    return ""
+
+
+def _fix_mistaken_identity(
+    mic: Microphone, text: str, samples: list[int], embedding: np.ndarray | None, mistaken_for: str
+) -> str | None:
+    """A friend was taken for someone else and said so. Their sentence comes back out of the wrong
+    voiceprint and starts their own, so from now on the closest-voice match can tell them apart
+    (with only Neha enrolled, every voice's closest match was Neha). Returns who it really is."""
+    claimed = _not_me_correction(text, mistaken_for)
+    if claimed is None:
+        return None
+    print(f"(not {mistaken_for} - {'it is ' + claimed if claimed else 'asking who it is'})")
+    if embedding is not None:
+        speaker.unlearn(mistaken_for, embedding)
+    if not claimed:
+        return _enroll_new_speaker(mic, samples, question=f"Oh, sorry! I thought you were {mistaken_for}. Who's this?")
+    if embedding is not None:
+        speaker.enroll(claimed, [embedding])
+    hud.set_state("SPEAKING")
+    tts.speak(f"Oh, sorry, {claimed}! I'll know your voice from now on.")
+    return claimed
 
 
 def _extract_name(text: str) -> str:
@@ -670,6 +708,13 @@ def _run_voice_loop() -> None:
                             t_enroll = time.perf_counter()
                             speaker_name = _enroll_new_speaker(mic, samples)
                             enroll_seconds = time.perf_counter() - t_enroll
+                    corrected = _fix_mistaken_identity(
+                        mic, text, samples, embedding if embedding_future is not None else None, speaker_name
+                    )
+                    if corrected:
+                        last_speaker_name = corrected
+                        follow_up = True
+                        continue
                     last_speaker_name = speaker_name
                     t_identified = time.perf_counter()
 

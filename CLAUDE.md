@@ -309,6 +309,15 @@ the phase roadmap.
   (`wake_word.wake_request`, wake audio starts the recording). Barge-in during a reply still only
   takes "Hey/Bye Jarvis" (`anywhere=False`). Not yet confirmed live.
 
+- **Friends taken for Neha — 2026-11-20** (her report: any girl talking is taken as her). Root
+  cause: only Neha is enrolled, so every voice's closest match is Neha, and a friend's 0.75-0.80
+  turns were also *learned into* her voiceprint, widening it further (her 30 samples' leave-one-out
+  scores span 0.73-0.94). Fixes: only matches ≥ `SPEAKER_LEARN_THRESHOLD` (0.82) are learned; and
+  a friend can say "I'm not Neha" / "this isn't Neha, it's Priya": `main._fix_mistaken_identity`
+  takes that clip back out of Neha's voiceprint (`speaker.unlearn`) and enrolls the friend (asks
+  their name if they didn't say it). Once a friend is enrolled, closest-match tells them apart.
+  Thresholds not retuned: asked her for log lines from a session with a friend. Not yet confirmed live.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by
