@@ -297,13 +297,14 @@ the phase roadmap.
   Whisper check accepts "Jarvis" anywhere (`wake_word.is_wake_phrase`; Indian-accent spellings
   `j[ae]a?r[vbw]...`) unless it's talked about ("my/the/called/like Jarvis"); the check waits for
   the sentence to end (0.3s quiet, max 1.6s) instead of a fixed 0.6s; `WAKE_NEAR_MISS_THRESHOLD`
-  0.05 → 0.02 (most nearby sentences get one ~0.5s Whisper pass). Every wake now goes through the
-  check, even a sure model score (her pick over an instant fast lane, accepting ~0.85s more per
-  wake: 0.3s quiet + 0.5s Whisper): the model scored "my Jarvis is broken" / "project called
-  Jarvis" up to 1.0. A sure score (≥ 0.5) whose transcript has no name at all ("Hey Jarvis" heard
-  as "Age Arbus") still wakes; only talked-about wording vetoes it. "Your" is not a talked-about
-  word (Whisper writes "Yo Jarvis" as "Your Jarvis"). Test clips (12 phrases x Neerja/Prabhat/
-  Jenny x normal/quiet mic): 68/72 woke (was 36/72), false wakes 0/48 (was 3/48).
+  0.05 → 0.02 (most nearby sentences get one ~0.5s Whisper pass). She chose "no false wakes"
+  over an unchecked fast lane, but waiting for Whisper before opening felt "so slow" live. Final
+  design: a sure score (≥ 0.5) opens the popup at once and `wake_word.check_wake()` transcribes the
+  wake audio during the 0.35s ACTIVATING flash (~0.15s extra); "not for me" (talked-about wording)
+  hides it again. A sure score whose transcript has no name ("Hey Jarvis" heard as "Age Arbus")
+  still wakes. "Your" is not a talked-about word (Whisper writes "Yo Jarvis" as "Your Jarvis").
+  Near-miss wait: 0.25s quiet, max 1.1s. Test clips (12 phrases x Neerja/Prabhat/Jenny x
+  normal/quiet mic): 67/72 woke (was 36/72), false wakes 0/48 (was 3/48).
   "Jarvis, what time is it?" caught at sentence end skips the hi and answers the question
   (`wake_word.wake_request`, wake audio starts the recording). Barge-in during a reply still only
   takes "Hey/Bye Jarvis" (`anywhere=False`). Not yet confirmed live.

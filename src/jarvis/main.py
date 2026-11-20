@@ -571,7 +571,7 @@ def _run_voice_loop() -> None:
             # "Jarvis, what time is it?" carries its own question: answer it instead of saying hi.
             wake_request = wake_word.wake_request()
             wake_frames = wake_word.recent_frames() if wake_request else None
-            goodbye_check = _background.submit(wake_word.said_goodbye, wake_audio)
+            wake_check = _background.submit(wake_word.check_wake, wake_audio, wake_word.heard_text())
             wake_embedding = _background.submit(speaker.embed, wake_audio)
             _speech.observe_voice(wake_audio)
             # Clear the wake-word model now. It still held "Hey Jarvis", so while the first reply was
@@ -587,8 +587,15 @@ def _run_voice_loop() -> None:
             hud.show_window()
             hud.set_state("ACTIVATING")
             time.sleep(ACTIVATING_FLASH_SECONDS)
-            if goodbye_check.result():
+            verdict = wake_check.result()
+            if verdict == "goodbye":
                 _quit(last_speaker_name or config.USER_NAME)
+            if verdict == "not for me":
+                hud.set_state("IDLE")
+                hud.hide_window()
+                wake_word.reset(model)
+                idle.start_waiting()
+                continue
             try:
                 first_frames, greeted_name = _greet(mic, wake_embedding, last_speaker_name, wake_frames)
                 last_speaker_name = greeted_name or last_speaker_name

@@ -18,10 +18,10 @@ THRESHOLD = 0.5
 # Test clips (Indian + US voices, noise): 67/72 such phrases woke it at 0.02, 64 at 0.04, 59 at 0.06.
 NEAR_MISS_THRESHOLD = config.WAKE_NEAR_MISS_THRESHOLD
 # After a score above the cutoff, the check waits for the end of the sentence: QUIET_FRAMES of quiet
-# (~0.3s), or MAX_WAIT_FRAMES (~1.6s) if the room never goes quiet. A fixed 0.6s wait checked "Good
+# (~0.25s), or MAX_WAIT_FRAMES (~1.1s) if the room never goes quiet. A fixed 0.6s wait checked "Good
 # morning..." and "Can you hear me..." before "Jarvis" had been said, and then nothing re-checked.
-QUIET_FRAMES = 4
-MAX_WAIT_FRAMES = 20
+QUIET_FRAMES = 3
+MAX_WAIT_FRAMES = 14
 NOISE_FRAMES = 60  # ~5s of recent frame levels, to tell quiet from talking in this room
 QUIET_OVER_NOISE = 2.0  # a frame quieter than this many times the room's noise counts as a pause
 BUFFER_FRAMES = 36  # ~2.9s of audio kept for the Whisper check: a slow "Hello... Jarvis" fits
@@ -74,10 +74,6 @@ def _whisper_confirms(peak: float, anywhere: bool) -> bool:
     global _wake_text
     text = stt.transcribe(np.concatenate(list(_recent_frames)).tolist())
     confirmed = is_wake_phrase(text, anywhere)
-    if not confirmed and peak >= THRESHOLD and not JARVIS_WORD.search(text):
-        # The model was sure but Whisper garbled the name ("Hey Jarvis" came out "Age Arbus"). Only
-        # words that show JARVIS being talked about can veto a sure score, and none were heard.
-        confirmed = True
     if confirmed:
         _wake_text = text
     if confirmed or "jar" in text.lower() or "jer" in text.lower():
@@ -115,6 +111,25 @@ def wake_request() -> str:
     return rest if len(re.findall(r"[a-zA-Z']+", rest)) >= REQUEST_MIN_WORDS else ""
 
 
+def heard_text() -> str:
+    """What the Whisper check heard, when that check is what woke JARVIS (else empty)."""
+    return _wake_text
+
+
+def check_wake(audio: list[int], heard: str = "") -> str:
+    """Right after a wake-up: "goodbye" ("Bye Jarvis"), "wake", or "not for me" ("my Jarvis is
+    broken"). audio: recent_audio() at detection; heard: heard_text() then, to skip transcribing again."""
+    text = heard or stt.transcribe(audio)
+    if is_goodbye(text):
+        return "goodbye"
+    # A sure score with no name in the transcript is Whisper garbling it ("Hey Jarvis" came out "Age
+    # Arbus"), not a mistake by the model: only words showing JARVIS being talked about veto it.
+    if is_wake_phrase(text) or not JARVIS_WORD.search(text):
+        return "wake"
+    print(f"(not woken: heard {text!r} - talking about JARVIS, not to it)")
+    return "not for me"
+
+
 def said_goodbye(audio: list[int]) -> bool:
     """Right after a detection: was it actually "Bye Jarvis"? audio: recent_audio() at detection."""
     return bool(audio) and is_goodbye(stt.transcribe(audio))
@@ -136,14 +151,14 @@ def detected(model: Model, frame: np.ndarray, anywhere: bool = True) -> bool:
     level = float(np.abs(frame).mean())
     _levels.append(level)
     score = model.predict(frame)[WAKE_MODEL_NAME]
-    if score >= THRESHOLD and not anywhere:
-        # While JARVIS is talking a clear "Hey Jarvis" cuts in at once.
+    if score >= THRESHOLD:
+        # A sure score wakes at once, and the popup opens right away. The model scores "my Jarvis is
+        # broken" as high as "Hey Jarvis", so main still runs check_wake() on this audio while the
+        # popup animates and backs out if JARVIS was only being talked about. Waiting for that check
+        # before opening (tried first) made every wake-up feel over a second slow.
         _clear_pending()
         return True
 
-    # Otherwise even a sure-sounding score gets the Whisper check (Neha's choice, 2026-11-20): the
-    # model scores "my Jarvis is broken" as high as "Hey Jarvis", and ~1s more per wake-up was worth
-    # not waking on those.
     if score >= NEAR_MISS_THRESHOLD:
         # Restart the wait while the score is still up: it can cross the cutoff on "Hel-" and only
         # peak on "-vis", and checking too early would cut "Jarvis" off the end of the clip.
