@@ -52,8 +52,9 @@ VAD_AGGRESSIVENESS = int(os.getenv("VAD_AGGRESSIVENESS", "2"))
 # base.en: ~0.7s per check on this laptop. small.en hears accents and technical words noticeably
 # better but takes ~2.3s, which adds about 1.5s to every reply (measured 2026-09-30).
 # Wake-word scores at or above this get a Whisper double-check (see wake_word.py). Lower it if
-# "Hello Jarvis" still takes several tries; the "(wake check: ...)" lines show how close misses came.
-WAKE_NEAR_MISS_THRESHOLD = float(os.getenv("WAKE_NEAR_MISS_THRESHOLD", "0.05"))
+# "Jarvis" still takes several tries; the "(wake check: ...)" lines show how close misses came. Raise
+# it (0.04-0.06) if the Whisper checks on ordinary chatter use too much CPU: fewer checks, more misses.
+WAKE_NEAR_MISS_THRESHOLD = float(os.getenv("WAKE_NEAR_MISS_THRESHOLD", "0.02"))
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base.en")
 # Optional words you use a lot that Whisper keeps mishearing (names, courses, libraries), written
 # as a sentence, e.g. "Talking about college, Python and machine learning." Empty by default.

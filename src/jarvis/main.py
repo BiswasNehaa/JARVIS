@@ -172,7 +172,8 @@ def _listen_for_stop(mic: Microphone, model, reply: str, done: threading.Event, 
     while not done.is_set():
         frame = mic.read_frame()
         window.append(frame)
-        if wake_word.detected(model, frame):
+        # Strict form only ("Hey/Bye Jarvis"): any "Jarvis" would let JARVIS's own voice cut itself off.
+        if wake_word.detected(model, frame, anywhere=False):
             heard["goodbye"] = wake_word.said_goodbye(wake_word.recent_audio())
             tts.interrupt()
             return
@@ -393,8 +394,14 @@ def _take_greeting(name: str | None, ask_who: bool = False) -> str:
     return text
 
 
-def _greet(mic: Microphone, wake_embedding: Future, last_speaker_name: str | None) -> tuple[list | None, str | None]:
+def _greet(
+    mic: Microphone, wake_embedding: Future, last_speaker_name: str | None, wake_frames: list | None = None
+) -> tuple[list | None, str | None]:
     """Say hi back when woken. Returns (frames to start the recording with, who it is).
+
+    wake_frames: the wake phrase's audio, when it already held a request ("Jarvis, what time is it?",
+    caught only once the sentence ended). No hi then: that audio starts the recording, so the
+    question is answered, along with anything said after it.
 
     If you go straight into a question ("Hey Jarvis, what time is it?") there's no greeting; the
     audio already heard starts the recording. Otherwise JARVIS says hi by name when it knows the
@@ -402,6 +409,8 @@ def _greet(mic: Microphone, wake_embedding: Future, last_speaker_name: str | Non
     (a wake phrase is too short to be sure; the first real sentence settles it).
     """
     gate = [mic.read_frame() for _ in range(int(GREETING_GATE_SECONDS * 1000 / FRAME_MS))]
+    if wake_frames:
+        return wake_frames + gate, last_speaker_name
     if sum(_speech.is_speech(frame) for frame in gate) >= GREETING_GATE_SPEECH_FRAMES:
         return gate, last_speaker_name
 
@@ -536,7 +545,7 @@ def _run_voice_loop() -> None:
     last_speaker_name: str | None = None
     min_speaker_samples = int(MIN_SPEAKER_UTTERANCE_SECONDS * SAMPLE_RATE)
 
-    print('JARVIS is listening. Say "Hey Jarvis", "Hello Jarvis" or "Hi Jarvis" to wake me up.')
+    print("JARVIS is listening. Say \"Jarvis\" in a sentence (\"Hey Jarvis\", \"What's up Jarvis\") to wake me up.")
     print('Say "Bye Jarvis" or press Ctrl+C to quit.')
     hud.set_state("IDLE")
 
@@ -559,6 +568,9 @@ def _run_voice_loop() -> None:
             # The wake-word model mostly listens for "Jarvis", so "Bye Jarvis" can trigger it too.
             # Check which one it was while the popup opens; the mic keeps buffering meanwhile.
             wake_audio = wake_word.recent_audio()
+            # "Jarvis, what time is it?" carries its own question: answer it instead of saying hi.
+            wake_request = wake_word.wake_request()
+            wake_frames = wake_word.recent_frames() if wake_request else None
             goodbye_check = _background.submit(wake_word.said_goodbye, wake_audio)
             wake_embedding = _background.submit(speaker.embed, wake_audio)
             _speech.observe_voice(wake_audio)
@@ -578,7 +590,7 @@ def _run_voice_loop() -> None:
             if goodbye_check.result():
                 _quit(last_speaker_name or config.USER_NAME)
             try:
-                first_frames, greeted_name = _greet(mic, wake_embedding, last_speaker_name)
+                first_frames, greeted_name = _greet(mic, wake_embedding, last_speaker_name, wake_frames)
                 last_speaker_name = greeted_name or last_speaker_name
             except Exception as exc:  # noqa: BLE001 - a failed hello shouldn't stop it listening
                 print(f"(greeting failed: {exc})")

@@ -7,7 +7,8 @@ Everything runs on free tools. No credit card needed anywhere.
 
 ## What it does
 
-- **Wakes on "Hey Jarvis", "Hi Jarvis" or "Hello Jarvis"** and says hi back, by name if it knows your
+- **Wakes whenever you say "Jarvis" to it**: "Hey Jarvis", "What's up Jarvis", "Jarvis, are you there?",
+  "Can you hear me Jarvis?". Talking *about* it ("my Jarvis is broken") doesn't count. It says hi back, by name if it knows your
   voice. If you go straight into a question ("Hey Jarvis, what time is it?") it skips the hello and
   answers.
 - **Knows who's talking.** It recognizes enrolled voices, and asks a new voice for their name once.
@@ -88,7 +89,7 @@ The first start takes a few seconds while the speech, voice and tone models load
 
 | Say | What happens |
 |---|---|
-| "Hey Jarvis" / "Hi Jarvis" / "Hello Jarvis" | Wakes up and says hi |
+| "Hey Jarvis" / "What's up Jarvis" / "Jarvis, ..." | Wakes up and says hi |
 | Anything, after it answers | Keeps the conversation going, no wake word needed |
 | "Stop" while it's talking | Stops talking and listens |
 | "Stop session" / "Stop listening" | Ends the conversation; it goes back to waiting for the wake word |

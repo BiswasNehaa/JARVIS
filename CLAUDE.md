@@ -289,6 +289,21 @@ the phase roadmap.
   to an approval inbox (idea from a friend's agent). First step is M0: unit tests + brain evals on
   today's JARVIS, no behaviour change.
 
+- **"Jarvis" anywhere wakes it — 2026-11-20** (asked for "what's up Jarvis", "hi Jarvis", not only
+  "Hey Jarvis"). Chose the hybrid over training a custom openWakeWord model: training needs Colab,
+  gigabytes of negative data and synthetic (mostly American) voices, and test clips showed the
+  pretrained model already keys on "Jarvis" (it scores "my Jarvis is broken" up to 1.0 too), while
+  her accent is what keeps scores low, which retraining on synthetic voices wouldn't fix. Now the
+  Whisper check accepts "Jarvis" anywhere (`wake_word.is_wake_phrase`; Indian-accent spellings
+  `j[ae]a?r[vbw]...`) unless it's talked about ("my/the/called/like Jarvis"); the check waits for
+  the sentence to end (0.3s quiet, max 1.6s) instead of a fixed 0.6s; `WAKE_NEAR_MISS_THRESHOLD`
+  0.05 → 0.02 (most nearby sentences get one ~0.7s Whisper pass). Model scores ≥ 0.5 still wake
+  instantly without a check (keeps "Hey Jarvis" fast; those 3/48 false wakes were there before).
+  Test clips (12 phrases x Neerja/Prabhat/Jenny x normal/quiet mic): 68/72 woke (was 36/72).
+  "Jarvis, what time is it?" caught at sentence end skips the hi and answers the question
+  (`wake_word.wake_request`, wake audio starts the recording). Barge-in during a reply still only
+  takes "Hey/Bye Jarvis" (`anywhere=False`). Not yet confirmed live.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by
