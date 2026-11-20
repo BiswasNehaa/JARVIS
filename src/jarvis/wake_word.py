@@ -27,8 +27,9 @@ QUIET_OVER_NOISE = 2.0  # a frame quieter than this many times the room's noise 
 BUFFER_FRAMES = 36  # ~2.9s of audio kept for the Whisper check: a slow "Hello... Jarvis" fits
 # Whisper's spellings of "Jarvis" in an Indian accent include "Jervis", "Jarvi", "Jaarvis", "Jarwis",
 # "Jarvy", "Jarbith", "Jarveth", "Jarvick": anything starting jarv/jarb/jerv/jarw. No common English
-# word does, and this is only ever checked right after the wake-word model's score went up.
-_JARVIS = r"(j[ae]a?r[vbw]\w*)"
+# word does, and this is only ever checked right after the wake-word model's score went up. Also
+# "Jalis" (her log, 2026-11-20: "I want you to be useful, Jalis", "Bye, Jalis").
+_JARVIS = r"(j[ae]a?r[vbw]\w*|jaa?lis\b)"
 JARVIS_WORD = re.compile(rf"\b{_JARVIS}", re.IGNORECASE)
 # "Jarvis" anywhere in what was said wakes JARVIS ("What's up Jarvis", "Jarvis, are you there?",
 # "Can you hear me Jarvis?"), unless it's clearly being talked about rather than to: "my Jarvis is
