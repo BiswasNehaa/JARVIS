@@ -33,9 +33,10 @@ JARVIS_WORD = re.compile(rf"\b{_JARVIS}", re.IGNORECASE)
 # "Jarvis" anywhere in what was said wakes JARVIS ("What's up Jarvis", "Jarvis, are you there?",
 # "Can you hear me Jarvis?"), unless it's clearly being talked about rather than to: "my Jarvis is
 # broken", "a project called Jarvis". The pretrained model can't tell these apart (both score up to
-# 1.0), so the words decide.
+# 1.0), so the words decide. "Your" isn't in the list: Whisper writes an Indian-accent "Yo Jarvis"
+# as "Your Jarvis".
 _TALKED_ABOUT = re.compile(
-    r"\b(my|your|his|her|our|their|the|a|an|this|that|called|named|about|of|with|from|and|or|like|love|hate|use|using|build|built|building|made|making)[\s,]*$", re.IGNORECASE
+    r"\b(my|his|her|our|their|the|a|an|this|that|called|named|about|of|with|from|and|or|like|love|hate|use|using|build|built|building|made|making)[\s,]*$", re.IGNORECASE
 )
 # The strict form: a greeting right before "Jarvis". Used while JARVIS is speaking, so a mishearing of
 # its own voice can't count as being called.
@@ -73,6 +74,10 @@ def _whisper_confirms(peak: float, anywhere: bool) -> bool:
     global _wake_text
     text = stt.transcribe(np.concatenate(list(_recent_frames)).tolist())
     confirmed = is_wake_phrase(text, anywhere)
+    if not confirmed and peak >= THRESHOLD and not JARVIS_WORD.search(text):
+        # The model was sure but Whisper garbled the name ("Hey Jarvis" came out "Age Arbus"). Only
+        # words that show JARVIS being talked about can veto a sure score, and none were heard.
+        confirmed = True
     if confirmed:
         _wake_text = text
     if confirmed or "jar" in text.lower() or "jer" in text.lower():
@@ -131,10 +136,14 @@ def detected(model: Model, frame: np.ndarray, anywhere: bool = True) -> bool:
     level = float(np.abs(frame).mean())
     _levels.append(level)
     score = model.predict(frame)[WAKE_MODEL_NAME]
-    if score >= THRESHOLD:
+    if score >= THRESHOLD and not anywhere:
+        # While JARVIS is talking a clear "Hey Jarvis" cuts in at once.
         _clear_pending()
         return True
 
+    # Otherwise even a sure-sounding score gets the Whisper check (Neha's choice, 2026-11-20): the
+    # model scores "my Jarvis is broken" as high as "Hey Jarvis", and ~1s more per wake-up was worth
+    # not waking on those.
     if score >= NEAR_MISS_THRESHOLD:
         # Restart the wait while the score is still up: it can cross the cutoff on "Hel-" and only
         # peak on "-vis", and checking too early would cut "Jarvis" off the end of the clip.
