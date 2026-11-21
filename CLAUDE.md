@@ -318,6 +318,13 @@ the phase roadmap.
   their name if they didn't say it). Once a friend is enrolled, closest-match tells them apart.
   Thresholds not retuned: asked her for log lines from a session with a friend. Not yet confirmed live.
 
+- **Voice checks — 2026-11-21** (finishing the "witty, not therapist" work). `tests/` has offline
+  pytest checks for brain.py's reply backstops; `python -m evals.voice_check` replays 8 lines from
+  her old logs through Groq (tools faked) and flags therapist/chatbot tells. Baseline 0/8 clean;
+  after adding a misheard-question example ("Do the thing, I can crack a job"), therapist lines to
+  the banned tells, and `MAX_REPLY_SENTENCES` 3 → 2: 5/8 on two runs. Run it after any prompt edit.
+  Still slips: the odd "it's okay to feel..." and replies over 25 words. Not yet confirmed live.
+
 ## Current status
 
 Phase 1 (core terminal loop: wake word → STT → Groq/GPT-OSS → TTS) works end-to-end, confirmed live by

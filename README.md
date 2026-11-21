@@ -113,7 +113,7 @@ All optional, set in `.env`:
 | `GROQ_FALLBACK_MODEL` | `openai/gpt-oss-20b` | Answers instantly when `GROQ_MODEL` hits the free tier's per-minute limit, instead of waiting ~15s for it to reset. Empty disables it |
 | `TTS_VOICE`, `TTS_RATE`, `TTS_PITCH` | `en-CA-LiamNeural`, `+0%`, `+0Hz` | The voice ([browse voices](https://speech.microsoft.com/portal/voicegallery)) |
 | `FOLLOW_UP_SECONDS` | `600` | How long a conversation stays open with nobody talking (0 = wake word every time) |
-| `MAX_REPLY_SENTENCES` | `3` | Replies are cut after this many sentences |
+| `MAX_REPLY_SENTENCES` | `2` | Replies are cut after this many sentences |
 | `WHISPER_MODEL_SIZE` | `base.en` | `small.en` hears accents and technical words better but adds about 1.5s per reply |
 | `STT_HINTS` | empty | A sentence of words you use a lot that it keeps mishearing |
 | `SILENCE_HANG_MS`, `MAX_SILENCE_HANG_MS` | `1200`, `3500` | How long a pause has to be before it decides you've finished |
@@ -122,6 +122,27 @@ All optional, set in `.env`:
 | `SPEAKER_UNKNOWN_THRESHOLD` | `0.40` | Below this on the wake phrase, it asks who you are |
 | `HISTORY_TURNS`, `HISTORY_RESET_SECONDS` | `6`, `600` | How much of the current chat it keeps, and when it starts fresh |
 | `MEMORY_MAX_FACTS` | `100` | How many remembered facts it keeps per person |
+
+## Checking it still sounds right
+
+Two checks for after you change the personality prompt in `src/jarvis/brain.py`:
+
+```
+python -m pytest tests
+```
+
+Offline tests (no API key, no internet) for the code that cleans up replies: no coaching question
+two replies in a row, no stage directions read aloud, replies kept short, and only a real goodbye
+switches JARVIS off.
+
+```
+python -m evals.voice_check
+```
+
+Replays eight lines from real conversations that used to get therapist-style replies, through Groq,
+and flags coaching questions, tips, therapist phrases, refusals, emoji and long replies. Takes about
+two minutes because it waits between calls to stay under the free tier's per-minute limit. Replies
+change from run to run, so compare scores over a couple of runs (5/8 clean as of November 2026).
 
 ## Your data stays on your laptop
 
